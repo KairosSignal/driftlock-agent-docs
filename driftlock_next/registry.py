@@ -68,6 +68,8 @@ def load(root):
         if policy not in ("local_only", "remote_tracked", "remote_publish_required"):
             fail("REMOTE_POLICY", f"Invalid remote policy: {policy}")
         project.setdefault("remote_policy", policy)
+        if project.get("task_allocator") not in (None,"local_serialized"):
+            fail("ALLOCATOR_POLICY", "Unknown task allocator policy")
         if "active_task" in project:
             if not isinstance(project["active_task"], str):
                 fail("REGISTRY_ACTIVE_TASK", "Active task pointer must be a relative path")

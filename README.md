@@ -67,7 +67,38 @@ See `references/problem-register-and-feedback.md` for the recommended states,
 minimum fields, task boundary, deduplication rules, and a Driftlock index
 example.
 
-## Driftlock Next 0.3.0 — local candidate
+## Driftlock Unified 0.4.0 — local integration candidate
+
+Adds end-to-end governance operations for company-scale local-only engineering,
+without replacing existing Company Control TASK and Problem Register authority.
+
+Production-grade deterministic operations included in this development candidate:
+
+- Read the existing markdown Problem Register, propose similar-issue matches
+  without silently merging, capture new feedback into its existing table,
+  reconcile related TASK states and apply authorized lifecycle transitions.
+- Validate formal PLAN status and dependency/supersedes graph, trace consumers
+  and perform explicitly approved, exact-hash status changes.
+- Reserve project-prefixed TASK IDs with single-filesystem locking; reservation
+  never grants construction approval and is not a distributed allocator.
+- Audit Git worktrees/branches, unique unmerged commits and remote divergence.
+- Detect installed Skill version drift and diagnose cross-project handoffs.
+- Apply a local-only remote policy only when explicitly configured.
+
+Use commands such as:
+
+    python3 scripts/driftlock.py problem reconcile /path/to/company --project governance
+    python3 scripts/driftlock.py problem candidates /path/to/company --project governance --text "observed bug"
+    python3 scripts/driftlock.py plan validate /path/to/company --project governance
+    python3 scripts/driftlock.py task reserve /path/to/company --project governance --expected-sha CURRENT_HASH --approve
+    python3 scripts/driftlock.py skill status /path/to/company --installed /root/.codex/skills/driftlock
+
+Writer commands require explicit authorization, IDs, provenance and/or version
+hashes. Semantic interpretation and verification evidence remain human/AI-assisted
+under existing project rules. The new CLI never pushes, deploys, deletes or
+changes an active TASK pointer.
+
+See tests/test_end_to_end.py and references for supported state transitions.
 
 Adds opt-in multi-project governance with one installable Skill, preserving the
 original five CLI commands and unchanged index schema/lock format.

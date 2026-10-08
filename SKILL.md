@@ -52,6 +52,11 @@ python3 <skill-root>/scripts/driftlock.py task check <project-root> --project go
 python3 <skill-root>/scripts/driftlock.py plan list <project-root> --project governance
 python3 <skill-root>/scripts/driftlock.py git audit <project-root> --project governance
 python3 <skill-root>/scripts/driftlock.py doctor check <project-root> --project governance
+python3 <skill-root>/scripts/driftlock.py problem list <project-root> --project governance
+python3 <skill-root>/scripts/driftlock.py problem candidates <project-root> --project governance --text "observed issue"
+python3 <skill-root>/scripts/driftlock.py problem reconcile <project-root> --project governance
+python3 <skill-root>/scripts/driftlock.py plan validate <project-root> --project governance
+python3 <skill-root>/scripts/driftlock.py skill status <project-root> --installed /root/.codex/skills/driftlock
 ```
 
 Use `--format json` for agents and automation.
@@ -60,7 +65,15 @@ Use `--format json` for agents and automation.
 - Among original freshness commands, verify alone writes the lock atomically.
 - The optional governance intake record command is a separate, explicitly
   approved writer into a configured authoritative intake file.
-- All other new governance commands are read-only; no task/branch switch.
+- All inspection commands remain read-only, including problem reconcile, plan
+  validate, Git audit and installed Skill status.
+- Additional explicit writers are problem transition, plan transition and
+  serialized task ID reservation. They always require --approve and an
+  expected SHA-256 snapshot; they neither authorize TASK execution nor deploy.
+- Semantic matching is advisory: no classifier or keyword score can declare a
+  user-reported observation a verified defect.
+- An existing Company Control task/problem record always remains authoritative;
+  never create parallel mutable states.
 - Never call `verify` until an AI or human has reviewed the real code,
   configuration, child documents, and contracts.
 - Do not verify relevant uncommitted paths. Unrelated dirty paths are allowed.

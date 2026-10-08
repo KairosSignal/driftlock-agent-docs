@@ -44,6 +44,9 @@ def record(root, project, kind, text, record_id, expected_sha, source, approved)
     if target.exists() and (target.is_symlink() or not target.is_file()):
         fail("UNSAFE_INTAKE_FILE", "Refuse to write non-regular/symlink target")
     preexisting = text_file(target) if target.exists() else ""
+    if kind == "problem" and target.exists() and "PROBLEM-" in preexisting and "|" in preexisting:
+        from .problems import capture
+        return capture(root, project, record_id, text, source, expected_sha, approved)
     before_tag_prefix = f"<!-- driftlock-intake:{record_id}:"
     before_tag = before_tag_prefix + sha(kind + "\x00" + text.strip() + "\x00" + source) + " -->"
     if before_tag_prefix in preexisting:

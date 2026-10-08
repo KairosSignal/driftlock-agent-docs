@@ -5,6 +5,10 @@ from .common import GovernanceError, response
 from .registry import project_list, project_status
 from .intake import propose, record
 from .audit import context_check, task_check, plan_list, git_audit, doctor
+from .problems import scan as problem_scan, transition as problem_transition, reconcile as problem_reconcile
+from .plans import validate as plan_validate, transition as plan_transition
+from .allocator import reserve as task_reserve
+from .skill_install import status as skill_status
 
 def configure(subs):
     def group(name, actions):
@@ -15,6 +19,8 @@ def configure(subs):
             cmd.add_argument("project_root")
             cmd.add_argument("--project", default=None)
             cmd.add_argument("--format", choices=("json", "text"), default="text")
+            if name == "skill" and action == "status":
+                cmd.add_argument("--installed", required=True)
             if name == "intake":
                 cmd.add_argument("--kind", choices=("question","observation","problem","idea","research","plan","execution","switch"))
                 cmd.add_argument("--text", required=True)
@@ -23,17 +29,39 @@ def configure(subs):
                     cmd.add_argument("--source", required=True)
                     cmd.add_argument("--expected-sha", required=True)
                     cmd.add_argument("--approve", action="store_true")
-            if name == "task" and action == "check":
-                cmd.add_argument("--id", default=None)
-            if name == "plan" and action == "trace":
-                cmd.add_argument("--path", required=True)
+            if name == "task":
+                if action == "check":
+                    cmd.add_argument("--id", default=None)
+                elif action == "reserve":
+                    cmd.add_argument("--expected-sha", required=True)
+                    cmd.add_argument("--approve", action="store_true")
+            if name == "plan":
+                if action == "trace": cmd.add_argument("--path", required=True)
+                if action == "transition":
+                    cmd.add_argument("--id", required=True)
+                    cmd.add_argument("--to", required=True)
+                    cmd.add_argument("--evidence", default=None)
+                    cmd.add_argument("--expected-sha", required=True)
+                    cmd.add_argument("--approve", action="store_true")
+            if name == "problem":
+                if action == "candidates":
+                    cmd.add_argument("--text", required=True)
+                if action == "transition":
+                    cmd.add_argument("--id", required=True)
+                    cmd.add_argument("--to", required=True)
+                    cmd.add_argument("--task", default=None)
+                    cmd.add_argument("--evidence", default=None)
+                    cmd.add_argument("--expected-sha", required=True)
+                    cmd.add_argument("--approve", action="store_true")
     for key, actions in (("project", ("list","status")),
                          ("context", ("show","check")),
                          ("intake", ("propose","record")),
-                         ("task", ("check",)),
-                         ("plan", ("list","trace")),
+                         ("task", ("check","reserve")),
+                         ("plan", ("list","trace","validate","transition")),
+                         ("problem", ("list","candidates","reconcile","transition")),
                          ("git", ("audit",)),
-                         ("doctor", ("check",))):
+                         ("doctor", ("check",)),
+                         ("skill", ("status",))):
         group(key, actions)
 
 def run(args, base_script):
@@ -51,13 +79,34 @@ def run(args, base_script):
             data = record(root, p, args.kind, args.text, args.id, args.expected_sha,
                           args.source, args.approve)
     elif args.command == "task":
-        data = task_check(root, p, args.id)
+        data = task_check(root, p, args.id) if args.action == "check" else task_reserve(
+            root, p, args.expected_sha, approve=args.approve)
     elif args.command == "plan":
-        data = plan_list(root, p, getattr(args, "path", None))
+        if args.action == "validate":
+            data = plan_validate(root, p)
+        elif args.action == "transition":
+            data = plan_transition(root, p, args.id, args.to, args.expected_sha,
+                                   args.evidence, args.approve)
+        else:
+            data = plan_list(root, p, getattr(args, "path", None))
+    elif args.command == "problem":
+        if args.action == "list":
+            data = problem_scan(root, p)
+        elif args.action == "reconcile":
+            data = problem_reconcile(root, p)
+        elif args.action == "candidates":
+            data = problem_scan(root, p, candidate=args.text)
+        else:
+            data = problem_transition(root, p, args.id, args.to, args.expected_sha,
+                                     task_id=args.task, evidence=args.evidence,
+                                     approved=args.approve)
     elif args.command == "git":
         data = git_audit(root, p)
     elif args.command == "doctor":
         data = doctor(root, p, base_script)
+    elif args.command == "skill":
+        from pathlib import Path
+        data = skill_status(Path(base_script).parent.parent, args.installed)
     else:
         raise ValueError("Unrecognized governance command")
     if args.format == "json":

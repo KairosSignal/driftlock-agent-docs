@@ -27,7 +27,7 @@ from urllib.parse import urlsplit
 
 
 SCHEMA_VERSION = 2
-TOOL_VERSION = "0.3.0"
+TOOL_VERSION = "0.4.0"
 ASCII_PUNCTUATION = frozenset(r"!\"#$%&'()*+,-./:;<=>?@[\]^_`{|}~")
 ROLES = {
     "project_entry", "module_index", "submodule_index", "status", "task_board",
@@ -1560,7 +1560,7 @@ def main(argv=None):
     args = None
     try:
         args = build_parser().parse_args(argv)
-        if args.command in {"project", "context", "intake", "task", "plan", "git", "doctor"}:
+        if args.command in {"project", "context", "intake", "task", "plan", "problem", "git", "doctor", "skill"}:
             from driftlock_next.cli import run
             return run(args, Path(__file__).resolve())
         project = Project.load(args.project_root)
