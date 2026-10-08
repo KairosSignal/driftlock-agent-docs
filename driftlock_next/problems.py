@@ -138,19 +138,21 @@ def _verify_resolution_claim(root, linked_task_id, evidence, task_meta):
         matches=re.findall(r"(?m)^"+re.escape(key)+r":[ \t]*.*$", header)
         if len(matches)!=1:
             fail("RESOLUTION_FIELD_AMBIGUOUS", f"Review field {key} must occur exactly once")
-    # A second verdict or review state in the body, even if quoted, must be
-    # reconciled by a reviewer rather than accepted as a single PASS.
-    if re.search(r"(?im)^\s*(?:verdict|review_status):\s*\S+",rest):
-        fail("RESOLUTION_CONTRADICTORY_REPORT","Report contains another verdict/status outside authoritative header")
-    # A structured PASS is insufficient if the same report contains another
-    # terminal outcome. Normalize Markdown and whitespace so multiline headings
-    # cannot bypass a single-line regex. Ambiguous reports require a reviewer.
-    normalized=re.sub(r"[\\s*_#`]+"," ",rest).casefold()
-    if (re.search(r"\b(?:final\s+)?verdict\b\s*[:=：]?\s*(?:fail|rejected|blocked)\b",normalized)
-        or re.search(r"\b(?:final\s+)?review\s+(?:result|status)\b\s*[:=：]?\s*(?:fail|rejected|blocked)\b",normalized)
-        or re.search(r"\bnot\s+(?:independently\s+)?(?:verified|accepted|approved)\b",normalized)
-        or re.search(r"(?:审核|复核|验收)(?:明确)?(?:未通过|失败)",normalized)):
-        fail("RESOLUTION_CONTRADICTORY_REPORT","Negative review outcome conflicts with structured PASS")
+    # Closure reports are deliberately narrower than general Review narratives:
+    # an evidence artifact may not contain any negative final-outcome token
+    # anywhere in the body. For reports discussing historical FAIL attempts,
+    # write a separate unambiguous acceptance record instead of guessing which
+    # outcome is authoritative. No loose "PASS" token ever authorizes closure.
+    normalized = re.sub(r"\s+", " ", rest).casefold()
+    forbidden = (
+        re.search(r"(?<![\w])(?:fail|failed|rejected|blocked)(?![\w])", normalized)
+        or re.search(r"\bnot\s+(?:independently\s+)?(?:verified|accepted|approved)\b", normalized)
+        or re.search(r"(?:审核|复核|验收)(?:明确)?(?:未通过|失败)|\b(?:未验证|未验收|未通过|不通过|拒绝)\b", normalized)
+        or re.search(r"(?i)^\s*(?:verdict|review_status)\s*:\s*\S+", rest, re.MULTILINE)
+    )
+    if forbidden:
+        fail("RESOLUTION_CONTRADICTORY_REPORT",
+             "Closing evidence includes a negative or ambiguous verdict; use a dedicated acceptance-only report")
     fields = frontmatter(body)
     # Exact, unambiguous verdict and task fields are required; never infer via prose.
     if fields.get("task_id") != linked_task_id:

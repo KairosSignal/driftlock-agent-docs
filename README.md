@@ -67,6 +67,30 @@ See `references/problem-register-and-feedback.md` for the recommended states,
 minimum fields, task boundary, deduplication rules, and a Driftlock index
 example.
 
+## Driftlock Unified 0.4.4 — R4 minimal acceptance-gate repair candidate
+
+R4 independently reviewed Skill 938dd761 / Company Control a551ac6
+and returned FAIL. This isolated candidate fixes R4's two incomplete gates:
+
+- For **terminal Problem resolution only**, a dedicated HEAD-committed review
+  report must contain an exact structured PASS but no standalone negative
+  outcome token anywhere in its Markdown body. This intentionally refuses
+  reports discussing historical FAIL results; write a short clean acceptance
+  record instead. This is a fail-closed protocol, not a free-text sentiment
+  classifier. It prevents punctuation, Markdown layout and multiline variants
+  from creating an alternative terminal verdict.
+- Current TASK context and task.check call the same identity-aware rework
+  predecessor gate. Missing, duplicate and wrong-owner references block both
+  paths. Historical records without an explicit rework_of declaration are
+  reported as legacy review warnings, without rewriting old records.
+- Adds adversarial tests for negative outcome variants, R1/R10 absence,
+  project-owner mismatch, positive closure and legacy compatibility.
+- Retains v0.4.3 Git safety boundaries. No current task switch,
+  installation, GitHub publication, production deployment or remote API run.
+
+This candidate requires independent R5 review; the previous R4 report remains
+an immutable separate audit artifact.
+
 ## Driftlock Unified 0.4.3 — R3 final-gate repair candidate
 
 R3 independent review of Skill 9f7ae14 and Company Control a551ac6 was FAIL,

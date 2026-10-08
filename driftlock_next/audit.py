@@ -198,6 +198,15 @@ def task_check(root, project_id=None, task_id=None):
             if meta.get("rework_of"):
                 rework_refs.append((ident, meta["rework_of"]))
         records.append((ident, file, meta))
+    # Evaluate existence/uniqueness and owner identity through the *same*
+    # helper used by live context. ID presence alone is not permission.
+    identity_index=_task_identity_index(meta for _,_,meta in records)
+    for ident, _file, meta in records:
+        for code in current_rework_issues(p,meta,identity_index):
+            finding={"task_id":ident,"code":code}
+            destination=bad_states if rework_issue_blocks(meta,code) else review_warnings
+            if finding not in destination:
+                destination.append(finding)
     duplicates = {key: value for key, value in by_id.items() if len(value) > 1}
     broken_rework = [{"task": ident, "missing_predecessor": parent}
                      for ident, parent in rework_refs if parent not in by_id]
@@ -220,25 +229,45 @@ def task_check(root, project_id=None, task_id=None):
                           any(m.get("task_contract_version") in ("2",2) for x,f,m in records if x==t["task_id"])
                           for t in rework_chain_issues)))
 
-def current_rework_issues(project, meta):
-    """Check the full predecessor identity, existence and ownership of live TASK."""
+def _task_identity_index(entries):
+    """Same authority scope and duplicate semantics for task.check/context.check."""
+    index={}
+    for meta in entries:
+        ident=meta.get("task_id")
+        if isinstance(ident,str) and ident:
+            index.setdefault(ident,[]).append(meta)
+    return index
+
+
+def rework_issue_blocks(meta, code):
+    """Only legacy records with *missing* lineage declarations receive warnings.
+    Explicit wrong-owner, duplicate and nonexistent references always fail.
+    """
+    if meta.get("task_contract_version") in ("2",2):
+        return True
+    if code=="rework_predecessor_mismatch" and not meta.get("rework_of"):
+        return False
+    return True
+
+
+def current_rework_issues(project, meta, task_index=None):
+    """Single authoritative predecessor gate shared by task and context readers."""
     ident=meta.get("task_id")
     if not isinstance(ident,str):
         return []
     match=re.fullmatch(r"(.+)-R([1-9][0-9]*)",ident)
     if not match:
         return []
-    index=int(match.group(2))
-    required=match.group(1) if index==1 else f"{match.group(1)}-R{index-1}"
+    suffix=int(match.group(2))
+    required=match.group(1) if suffix==1 else f"{match.group(1)}-R{suffix-1}"
     if meta.get("rework_of")!=required:
         return ["rework_predecessor_mismatch"]
     from .ownership import owner
     own=owner(meta,"task")
-    parents=[]
-    for file in tasks_for(project):
-        other=frontmatter(text_file(file))
-        if other.get("task_id")==required:
-            parents.append(other)
+    if task_index is None:
+        task_index=_task_identity_index(
+            frontmatter(text_file(path)) for path in tasks_for(project))
+    parents=task_index.get(required,[])
     if not parents:
         return ["rework_predecessor_missing"]
     if len(parents)!=1:
@@ -333,7 +362,11 @@ def context_check(root, project_id=None):
     if not isinstance(task_meta.get("task_id"),str):
         lifecycle_blocking.append("task_id_missing_or_invalid")
     lifecycle_blocking.extend(task_lifecycle_blockers(task_meta))
-    lifecycle_blocking.extend(current_rework_issues(p,task_meta))
+    for code in current_rework_issues(p,task_meta):
+        if rework_issue_blocks(task_meta,code):
+            lifecycle_blocking.append(code)
+        else:
+            cautions.append(code)
     lifecycle_blocking=sorted(set(lifecycle_blocking))
     return response("context.check", project_id=p["id"], task_id=task_meta.get("task_id"),
         task_path=task_path, status=task_meta.get("status"), review_status=task_meta.get("review_status"),

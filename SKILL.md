@@ -22,6 +22,19 @@ create a competing documentation source of truth.
 If no valid L0 exists, treat the project as unmanaged. Run `discover`; do not
 guess which status file is authoritative.
 
+## R4 closure report authority and shared rework verification
+
+For terminal Problem closure, a report containing historical FAIL/REJECTED/
+BLOCKED verdicts is not an acceptable *closure evidence report*, even when
+its frontmatter says PASS. Use a concise independent acceptance-only record
+with exact task_id and candidate SHA instead; never select a positive word
+from a contradictory document.
+
+Both task.check and context.check use the same predecessor-identity gate.
+Versioned tasks cannot proceed when a parent is missing, duplicated, or
+explicitly belongs to another project. Older undeclared lineage remains a
+visible reconciliation warning, not an automatic historical task rewrite.
+
 ## R3 remaining independent-review gates
 
 Every governed current TASK with a rework suffix must resolve a unique
