@@ -67,6 +67,32 @@ See `references/problem-register-and-feedback.md` for the recommended states,
 minimum fields, task boundary, deduplication rules, and a Driftlock index
 example.
 
+## Driftlock Unified 0.4.3 — R3 final-gate repair candidate
+
+R3 independent review of Skill 9f7ae14 and Company Control a551ac6 was FAIL,
+with three remaining HIGH issues and one MEDIUM check-schema issue.
+
+This isolated revision:
+- Rejects multi-line Markdown FAIL/rejected review conclusions and split
+  phrases indicating the reviewed candidate is not independently verified;
+  requires structured, HEAD-committed PASS and exact TASK/commit identity.
+- Runs predecessor existence, uniqueness and ownership checks in current
+  context in addition to task checks, covering correctly named R1 and R10
+  predecessors that are absent from the actual authoritative repository.
+- Disables Git optional writes, fsmonitor hooks and unsafe inherited repo
+  execution options in BOTH the original five-command checker and new
+  governance operations, including the doctor subprocess.
+- Validates doctor result-state vocabulary and agreement between check
+  results and exit codes. UNKNOWN/BLOCKED document states cannot be treated
+  as a clean pass.
+- Adds read-only security configuration and negative lifecycle regression
+  tests, with no change to existing business or deployment authority.
+
+This version remains a candidate. It cannot authorize installation, release
+or deployment merely because its unit tests pass. Actual Windows operation,
+same-UID hostile filesystem races and distributed clones remain explicitly
+outside the local guarantees.
+
 ## Driftlock Unified 0.4.2 — R2 focused security repair candidate
 
 R2 independent review of 531c779 (Skill) and a551ac6 (Company Control)

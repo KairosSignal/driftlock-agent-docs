@@ -5,7 +5,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from .common import fail, frontmatter, git, response, text_file, within
+from .common import fail, frontmatter, git, git_safe_env, response, text_file, within
 from .registry import select, project_list
 from .ownership import visible, require_owner, owner
 
@@ -220,6 +220,38 @@ def task_check(root, project_id=None, task_id=None):
                           any(m.get("task_contract_version") in ("2",2) for x,f,m in records if x==t["task_id"])
                           for t in rework_chain_issues)))
 
+def current_rework_issues(project, meta):
+    """Check the full predecessor identity, existence and ownership of live TASK."""
+    ident=meta.get("task_id")
+    if not isinstance(ident,str):
+        return []
+    match=re.fullmatch(r"(.+)-R([1-9][0-9]*)",ident)
+    if not match:
+        return []
+    index=int(match.group(2))
+    required=match.group(1) if index==1 else f"{match.group(1)}-R{index-1}"
+    if meta.get("rework_of")!=required:
+        return ["rework_predecessor_mismatch"]
+    from .ownership import owner
+    own=owner(meta,"task")
+    parents=[]
+    for file in tasks_for(project):
+        other=frontmatter(text_file(file))
+        if other.get("task_id")==required:
+            parents.append(other)
+    if not parents:
+        return ["rework_predecessor_missing"]
+    if len(parents)!=1:
+        return ["rework_predecessor_ambiguous"]
+    parent_owner=owner(parents[0],"task")
+    if own and parent_owner and own!=parent_owner:
+        return ["rework_predecessor_owner_mismatch"]
+    if (meta.get("task_contract_version") in ("2",2) and
+        (own is None or parent_owner is None)):
+        return ["rework_predecessor_owner_unverified"]
+    return []
+
+
 def context_check(root, project_id=None):
     p = select(root, project_id)
     pr = Path(p["_resolved_root"])
@@ -301,6 +333,7 @@ def context_check(root, project_id=None):
     if not isinstance(task_meta.get("task_id"),str):
         lifecycle_blocking.append("task_id_missing_or_invalid")
     lifecycle_blocking.extend(task_lifecycle_blockers(task_meta))
+    lifecycle_blocking.extend(current_rework_issues(p,task_meta))
     lifecycle_blocking=sorted(set(lifecycle_blocking))
     return response("context.check", project_id=p["id"], task_id=task_meta.get("task_id"),
         task_path=task_path, status=task_meta.get("status"), review_status=task_meta.get("review_status"),
@@ -455,7 +488,8 @@ def doctor(root, project_id=None, script=None):
             fail("UNTRUSTED_CHECKER", "doctor may only invoke this Skill's own read-only checker")
         try:
             process = subprocess.run([sys.executable, str(script), "check", str(p["_resolved_root"]), "--format", "json"],
-                                     text=True, capture_output=True, timeout=30, check=False)
+                                     text=True, capture_output=True, timeout=30, check=False,
+                                     env=git_safe_env())
         except (OSError, subprocess.TimeoutExpired) as exc:
             checks["documents"]={"status":"unavailable","error":str(exc),"blocking":True}
             process = None
@@ -466,10 +500,15 @@ def doctor(root, project_id=None, script=None):
                     raise ValueError("Missing expected Driftlock document-check schema")
                 results=payload.get("results")
                 errors=payload.get("blocking_errors")
+                valid_states={"CURRENT","STALE","UNVERIFIED","REVIEW_REQUIRED","SUPERSEDED","ARCHIVED"}
                 if (not isinstance(results,list) or not isinstance(errors,list)
-                        or any(not isinstance(x,dict) or not isinstance(x.get("state"),str) for x in results)
+                        or any(not isinstance(x,dict) or x.get("state") not in valid_states for x in results)
                         or any(not isinstance(x,dict) for x in errors)):
                     raise ValueError("Malformed document-check results or errors")
+                attention_states={"STALE","UNVERIFIED","REVIEW_REQUIRED"}
+                attention=any(item["state"] in attention_states for item in results)
+                if process.returncode in (0,1) and bool(process.returncode)!=attention:
+                    raise ValueError("Document-check exit code disagrees with document states")
                 if process.returncode not in (0,1) or errors:
                     checks["documents"]={"exit_code":process.returncode,"blocking":True,
                                          "blocking_errors":errors}

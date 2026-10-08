@@ -142,9 +142,14 @@ def _verify_resolution_claim(root, linked_task_id, evidence, task_meta):
     # reconciled by a reviewer rather than accepted as a single PASS.
     if re.search(r"(?im)^\s*(?:verdict|review_status):\s*\S+",rest):
         fail("RESOLUTION_CONTRADICTORY_REPORT","Report contains another verdict/status outside authoritative header")
-    if (re.search(r"(?im)\b(?:final[ \t]+)?verdict\b[^\n]{0,28}\b(?:FAIL|REJECTED|BLOCKED)\b",rest)
-        or re.search(r"(?i)\bnot[ \t]+(?:independently[ \t]+)?(?:verified|accepted|approved)\b",rest)
-        or re.search(r"(?im)\b(?:final[ \t]+)?review[ \t]+(?:result|status)\b[^\n]{0,28}\b(?:FAIL|REJECTED)\b",rest)):
+    # A structured PASS is insufficient if the same report contains another
+    # terminal outcome. Normalize Markdown and whitespace so multiline headings
+    # cannot bypass a single-line regex. Ambiguous reports require a reviewer.
+    normalized=re.sub(r"[\\s*_#`]+"," ",rest).casefold()
+    if (re.search(r"\b(?:final\s+)?verdict\b\s*[:=：]?\s*(?:fail|rejected|blocked)\b",normalized)
+        or re.search(r"\b(?:final\s+)?review\s+(?:result|status)\b\s*[:=：]?\s*(?:fail|rejected|blocked)\b",normalized)
+        or re.search(r"\bnot\s+(?:independently\s+)?(?:verified|accepted|approved)\b",normalized)
+        or re.search(r"(?:审核|复核|验收)(?:明确)?(?:未通过|失败)",normalized)):
         fail("RESOLUTION_CONTRADICTORY_REPORT","Negative review outcome conflicts with structured PASS")
     fields = frontmatter(body)
     # Exact, unambiguous verdict and task fields are required; never infer via prose.

@@ -52,12 +52,26 @@ def read_json(path):
         fail("INVALID_CONFIG", "Expected JSON object")
     return data
 
+def git_safe_env():
+    """Override config-driven hooks and optional index writes for every Git reader."""
+    env=dict(os.environ)
+    env.update({
+        "GIT_OPTIONAL_LOCKS":"0",
+        "GIT_CONFIG_COUNT":"2",
+        "GIT_CONFIG_KEY_0":"core.fsmonitor",
+        "GIT_CONFIG_VALUE_0":"false",
+        "GIT_CONFIG_KEY_1":"core.hooksPath",
+        "GIT_CONFIG_VALUE_1":os.devnull,
+    })
+    return env
+
 def git(repo, *args, check=True):
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo), *args], capture_output=True,
+            ["git", "--no-optional-locks", "-c", "core.fsmonitor=false",
+             "-c", "core.hooksPath="+os.devnull, "-C", str(repo), *args], capture_output=True,
             text=True, timeout=12, check=False,
-            env={**os.environ,"GIT_OPTIONAL_LOCKS":"0"},
+            env=git_safe_env(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         fail("GIT_UNAVAILABLE", str(exc))

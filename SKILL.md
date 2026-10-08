@@ -22,6 +22,23 @@ create a competing documentation source of truth.
 If no valid L0 exists, treat the project as unmanaged. Run `discover`; do not
 guess which status file is authoritative.
 
+## R3 remaining independent-review gates
+
+Every governed current TASK with a rework suffix must resolve a unique
+authoritative predecessor of the same project; merely matching the predecessor
+name pattern is not sufficient. Treat missing or ambiguous lineage as blocked.
+
+A terminal Problem closure report cannot say PASS in metadata while stating
+FAIL, rejected, or not independently verified in a Markdown body, including
+line-broken conclusions. Ask for an unambiguous verified report instead.
+
+Git read-only commands are not automatically inert: repository fsmonitor
+settings can execute helper programs and status can refresh its index. Both
+the legacy five-command Driftlock checker and governance readers override
+these settings with safe subprocess arguments and environment. Doctor checks
+internal freshness but never invokes a project-provided handoff script.
+Unknown document result states or conflicting exit codes block the diagnosis.
+
 ## R2 release-safety repair scope
 
 R2 found a few more false-acceptance paths even after R1 tests passed.

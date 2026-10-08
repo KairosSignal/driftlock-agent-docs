@@ -27,7 +27,7 @@ from urllib.parse import urlsplit
 
 
 SCHEMA_VERSION = 2
-TOOL_VERSION = "0.4.2"
+TOOL_VERSION = "0.4.3"
 ASCII_PUNCTUATION = frozenset(r"!\"#$%&'()*+,-./:;<=>?@[\]^_`{|}~")
 ROLES = {
     "project_entry", "module_index", "submodule_index", "status", "task_board",
@@ -215,7 +215,20 @@ def extract_index_blocks(text):
 
 
 def run_git(root, *args):
-    return subprocess.run(["git", *args], cwd=root, text=True, capture_output=True)
+    # The documents repository is data, not a source of executable helpers.
+    safe_env=dict(os.environ)
+    safe_env.update({
+        "GIT_OPTIONAL_LOCKS":"0",
+        "GIT_CONFIG_COUNT":"2",
+        "GIT_CONFIG_KEY_0":"core.fsmonitor",
+        "GIT_CONFIG_VALUE_0":"false",
+        "GIT_CONFIG_KEY_1":"core.hooksPath",
+        "GIT_CONFIG_VALUE_1":os.devnull,
+    })
+    return subprocess.run(["git", "--no-optional-locks",
+                           "-c", "core.fsmonitor=false",
+                           "-c", "core.hooksPath="+os.devnull, *args],
+                          cwd=root, text=True, capture_output=True, env=safe_env)
 
 
 def git_root(root):

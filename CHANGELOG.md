@@ -1,5 +1,16 @@
 # Driftlock Changelog
 
+## 0.4.3 — R3 gate-closure candidate (2026-10-08)
+
+Independent R3 audited Skill 9f7ae14 / Company a551ac6: FAIL.
+Addressed three documented HIGH: multiline failure report acceptance,
+missing real rework predecessor in current context, and Git fsmonitor /
+optional-index-write execution via legacy and new readers.
+Also tightened doctor result state and exit-code consistency; added new
+isolated regression tests. Not yet independently accepted, installed,
+published, integrated or deployed.
+
+
 ## 0.4.2 — independent R2 focused repair candidate (2026-10-08)
 
 R2 audited frozen Skill 531c779 / Company Control a551ac6 and returned FAIL.
