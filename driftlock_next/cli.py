@@ -122,4 +122,5 @@ def run(args, base_script):
         print(f"{data['command']}: {data.get('project_id','')}")
         print(json.dumps({key: val for key, val in data.items() if key not in ("command", "schema_version")},
                          ensure_ascii=False, indent=2))
-    return 2 if data.get("state") == "blocked" or data.get("blocking") is True else 0
+    return (2 if data.get("state") == "blocked" or data.get("blocking") is True
+            else 1 if data.get("state") == "review_required" else 0)

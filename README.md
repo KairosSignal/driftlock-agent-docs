@@ -67,7 +67,31 @@ See `references/problem-register-and-feedback.md` for the recommended states,
 minimum fields, task boundary, deduplication rules, and a Driftlock index
 example.
 
-## Driftlock Unified 0.4.1 — independent-review R1 repair candidate
+## Driftlock Unified 0.4.2 — R2 focused security repair candidate
+
+R2 independent review of 531c779 (Skill) and a551ac6 (Company Control)
+was FAIL: three HIGH fixed, seven partial, plus two new findings.
+This separate worktree addresses the cited R2 edge cases without touching
+frozen R2 inputs. It is still a *candidate*, NOT cleared for installation.
+
+- Structured PASS reviews with duplicate or contradictory verdicts and
+  explicit negative text cannot close a problem.
+- Versioned TASK lifecycle and rework lineage produce the same hard failures
+  from task.check and context.check; no implied release from Review PASS.
+- Company aggregation cannot edit other projects' formal plans or weaken
+  the owning project's remote policy.
+- Doctor validates the complete built-in check schema and uses exit 1 for
+  review_required. It never runs the external handoff automatically.
+- Git checks are read-only with optional locks disabled.
+- Quoted task IDs on local branches are included in number reservations.
+- POSIX authoritative writes are pinned to verified directory descriptors;
+  lock files are checked for regular inode identity. All cooperating PLAN
+  writers serialize through a graph-level lock and reject unhealthy graphs.
+  Same-UID hostile filesystem mutation and native Windows security require
+  separate platform threat-model verification before release.
+- References now reflect the actual handoff procedure.
+
+## Previous 0.4.1 Candidate (failed R2)
 
 The predecessor v0.4.0 candidate failed independent Review with ten HIGH and
 three MEDIUM findings. This local R1 repair hardens the existing code:

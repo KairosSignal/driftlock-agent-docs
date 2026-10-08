@@ -1,5 +1,17 @@
 # Driftlock Changelog
 
+## 0.4.2 — independent R2 focused repair candidate (2026-10-08)
+
+R2 audited frozen Skill 531c779 / Company Control a551ac6 and returned FAIL.
+This uninstalled candidate repairs the documented R2 HIGH/PARTIAL paths:
+conflicting review verdicts, company alias cross-project PLAN write, incomplete
+new-TASK lifecycle checks, quoted branch TASK IDs, owner-specific Git policy,
+doctor schema/return codes, false read-only script references and PLAN graph
+serialization. POSIX authoritative writers now use pinned directory file
+descriptors; all writes remain guarded by CAS and explicit approval.
+Add real temporary filesystem and concurrent negative tests. Windows and
+hostile same-UID filesystem racing are not claimed fully validated.
+
 ## 0.4.1 — independent review R1 repair candidate (2026-10-08)
 
 R1 reviewed a7671f4 (Driftlock) and e78a770 (Company Control): FAIL.

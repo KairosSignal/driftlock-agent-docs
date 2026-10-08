@@ -1,6 +1,7 @@
 """Shared safe readers. No network, credentials or background work."""
 from __future__ import annotations
 import hashlib
+import os
 import json
 import re
 import subprocess
@@ -56,6 +57,7 @@ def git(repo, *args, check=True):
         result = subprocess.run(
             ["git", "-C", str(repo), *args], capture_output=True,
             text=True, timeout=12, check=False,
+            env={**os.environ,"GIT_OPTIONAL_LOCKS":"0"},
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         fail("GIT_UNAVAILABLE", str(exc))

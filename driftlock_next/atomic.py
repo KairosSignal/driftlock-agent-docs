@@ -4,7 +4,7 @@ import os
 import tempfile
 from pathlib import Path
 from .common import fail, sha, text_file, within
-from .locks import exclusive
+from .locks import exclusive, pinned_directory, anchored_read_text, anchored_replace_text
 
 def change(project_root, relative, expected_sha, replacement, *, approve, allow_create=False):
     if not approve:
@@ -16,28 +16,28 @@ def change(project_root, relative, expected_sha, replacement, *, approve, allow_
     if target.exists() and (not target.is_file() or target.is_symlink()):
         fail("UNSAFE_AUTHORITY", "Expected regular non-symlink file")
     target.parent.mkdir(parents=True, exist_ok=True)
-    lock = target.parent / ("." + target.name + ".driftlock-write.lock")
-    if lock.is_symlink():
+    guard = target.parent / ("." + target.name + ".driftlock-write.lock")
+    if guard.is_symlink():
         fail("UNSAFE_LOCK", "Refuse symlink lock file")
-    with exclusive(lock):
-        current = text_file(target) if target.exists() else ""
-        digest = sha(current)
-        if current == replacement:
-            return {"path": str(target), "sha256": digest, "changed": False}
-        if expected_sha != digest:
-            fail("VERSION_CONFLICT", f"Expected {expected_sha}; actual {digest}")
-        fd, temp = tempfile.mkstemp(prefix=".driftlock-update-", dir=target.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as dest:
-                dest.write(replacement)
-                dest.flush()
-                os.fsync(dest.fileno())
-            os.replace(temp, target)
-            try:
-                folder_fd = os.open(target.parent, os.O_RDONLY)
-                try: os.fsync(folder_fd)
-                finally: os.close(folder_fd)
-            except OSError: pass
-        finally:
-            if os.path.exists(temp): os.unlink(temp)
-        return {"path": str(target), "sha256": sha(replacement), "changed": True}
+    with pinned_directory(target.parent,root) as dir_fd:
+        with exclusive(guard,dir_fd=dir_fd):
+            current=(anchored_read_text(dir_fd,target.name) if dir_fd is not None
+                     else text_file(target) if target.exists() else "")
+            digest=sha(current)
+            if current==replacement:
+                return {"path":str(target),"sha256":digest,"changed":False}
+            if expected_sha!=digest:
+                fail("VERSION_CONFLICT",f"Expected {expected_sha}; actual {digest}")
+            if dir_fd is not None:
+                anchored_replace_text(dir_fd,target.name,replacement)
+            else:
+                # Non-POSIX compatibility branch; Windows requires separate
+                # platform-security verification before multiuser release.
+                fd,temp=tempfile.mkstemp(prefix=".driftlock-update-",dir=target.parent)
+                try:
+                    with os.fdopen(fd,"w",encoding="utf-8",newline="\n") as out:
+                        out.write(replacement);out.flush();os.fsync(out.fileno())
+                    os.replace(temp,target)
+                finally:
+                    if os.path.exists(temp):os.unlink(temp)
+            return {"path":str(target),"sha256":sha(replacement),"changed":True}

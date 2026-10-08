@@ -13,6 +13,44 @@ VALID_POLICIES = ("local_only", "remote_tracked", "remote_publish_required")
 TASK_ID = re.compile(r"^(?:(?:IC|AMZ|INT|BI|KB|GOV)-)?TASK-[0-9]+[A-Z0-9]*(?:-[A-Z0-9]+)*$")
 NAMED_TASK = re.compile(r"^((?:(?:IC|AMZ|INT|BI|KB|GOV)-)?TASK-\d+(?:-[A-Z])?(?:-R\d+)?)")
 
+def task_lifecycle_blockers(meta):
+    """Hard gates for versioned TASKs; never infer acceptance from Git alone."""
+    if meta.get("task_contract_version") not in ("2",2):
+        return []
+    status=meta.get("status")
+    review=meta.get("review_status")
+    candidate=meta.get("candidate_state")
+    sha=meta.get("candidate_commit")
+    merge=meta.get("merge_allowed") is True
+    deploy=meta.get("deploy_allowed") is True
+    early={"planned","in_progress","ready_for_review","rework_required"}
+    accepted={"accepted","accepted_pending_integration","integrated",
+              "integrated_pending_deploy","deployed","deployed_pending_close","closed"}
+    problems=[]
+    if status in early and (merge or deploy):
+        problems.append("pre_acceptance_release_permission")
+    if status in accepted and review!="pass":
+        problems.append("accepted_without_review_pass")
+    if status=="ready_for_review" and review in ("pass","fail"):
+        problems.append("ready_review_verdict_conflict")
+    if status in early and candidate in ("superseded","rejected"):
+        problems.append("active_task_has_invalid_candidate")
+    if status in accepted and candidate in ("superseded","rejected","none"):
+        problems.append("accepted_candidate_invalid")
+    if status in accepted and (not isinstance(sha,str) or not re.fullmatch(r"[0-9a-f]{40}",sha)):
+        problems.append("accepted_candidate_commit_missing")
+    if deploy and meta.get("release_gates_open") not in (None,"none","null","[]",""):
+        problems.append("deploy_permission_while_gates_open")
+    ident=meta.get("task_id")
+    if isinstance(ident,str):
+        m=re.fullmatch(r"(.+)-R([1-9][0-9]*)",ident)
+        if m:
+            index=int(m.group(2))
+            predecessor=m.group(1) if index==1 else f"{m.group(1)}-R{index-1}"
+            if meta.get("rework_of")!=predecessor:
+                problems.append("rework_predecessor_mismatch")
+    return sorted(set(problems))
+
 def git_snapshot(repo, policy="local_only", expected_branch=None, candidate=None,
                  head_policy="exact"):
     repo = Path(repo)
@@ -30,7 +68,12 @@ def git_snapshot(repo, policy="local_only", expected_branch=None, candidate=None
         problems.append("unexpected_branch")
     if status:
         problems.append("dirty_worktree")
-    if candidate and candidate not in ("not_set", "none", "null"):
+    if head_policy not in ("exact","contains_candidate"):
+        problems.append("candidate_head_policy_invalid")
+    if candidate not in (None, "", "not_set", "none", "null"):
+        if not isinstance(candidate, str) or not re.fullmatch(r"[0-9a-fA-F]{40}",candidate):
+            return {"state":"blocked","blocking":["invalid_candidate_commit_type_or_sha"],
+                    "remote_policy":policy,"head":head,"branch":actual}
         ref = git(repo, "rev-parse", "--verify", candidate, check=False)
         if ref.returncode or git(repo, "cat-file", "-e", candidate + "^{commit}", check=False).returncode:
             problems.append("candidate_missing")
@@ -53,10 +96,15 @@ def git_snapshot(repo, policy="local_only", expected_branch=None, candidate=None
                 problems.append("upstream_comparison_failed")
             else:
                 if behind:
-                    problems.append("upstream_behind")
+                    if policy == "local_only":
+                        infos.append("local_only_branch_behind_upstream")
+                    else:
+                        problems.append("upstream_behind")
                 if ahead:
                     if policy == "remote_publish_required":
                         problems.append("unpublished_commits")
+                    elif policy == "remote_tracked":
+                        problems.append("upstream_not_synchronized")
                     else:
                         infos.append("local_commits_not_pushed")
         else:
@@ -89,6 +137,11 @@ def task_check(root, project_id=None, task_id=None):
     for file in files:
         meta = frontmatter(text_file(file))
         ident = meta.get("task_id")
+        if "task_id" in meta and not isinstance(ident,str):
+            if meta.get("task_contract_version") in ("2",2):
+                bad_states.append({"task_id":str(ident),"code":"INVALID_NEW_TASK_ID_TYPE"})
+            else:
+                review_warnings.append({"file":file.name,"code":"LEGACY_TASK_ID_TYPE"})
         if not ident:
             # Legacy filenames are not authoritative IDs.
             incomplete.append(file.name)
@@ -105,6 +158,8 @@ def task_check(root, project_id=None, task_id=None):
             by_id.setdefault(ident, []).append(file.name)
             state=meta.get("status")
             review=meta.get("review_status")
+            for code in task_lifecycle_blockers(meta):
+                bad_states.append({"task_id":ident,"code":code})
             if state in ("accepted","accepted_pending_integration","integrated","integrated_pending_deploy",
                          "deployed","deployed_pending_close","closed"):
                 if review=="fail":
@@ -194,13 +249,30 @@ def context_check(root, project_id=None):
     checkout = task_meta.get("repository_path") or task_meta.get("worktree") or str(pr)
     if not isinstance(checkout, str):
         checkout = str(pr)
-    policy = task_meta.get("remote_policy") or p.get("remote_policy", "local_only")
-    if policy not in VALID_POLICIES:
-        fail("REMOTE_POLICY", f"Unrecognized policy: {policy}")
-    original_declares_policy = bool(task_meta.get("remote_policy") or
-                                     (Path(root) / ".driftlock" / "projects.json").exists())
+    from .ownership import canonical
+    from .registry import load as load_registry
+    owner_id=canonical(task_meta.get("current_project"))
+    spec=load_registry(root)
+    owners=[item for item in spec["projects"] if item["id"]==owner_id]
+    if p["id"] in ("governance","company") and owner_id not in ("governance","company"):
+        if owner_id is None and p.get("_registry_project_count",1)==1:
+            inherited_policy=p.get("remote_policy","remote_tracked")
+        elif len(owners)==1:
+            inherited_policy=owners[0]["remote_policy"]
+        else:
+            fail("TASK_OWNER_UNRESOLVED","Cannot downgrade release policy for unregistered task owner")
+    else:
+        inherited_policy=p.get("remote_policy","remote_tracked")
+    # Explicit task policy may make the gate stricter, never weaker.
+    order={"local_only":0,"remote_tracked":1,"remote_publish_required":2}
+    claimed=task_meta.get("remote_policy")
+    if claimed is not None and claimed not in VALID_POLICIES:
+        fail("REMOTE_POLICY",f"Unrecognized task policy {claimed}")
+    policy=max((inherited_policy, claimed or inherited_policy),key=lambda x:order[x])
+    original_declares_policy=bool(claimed or
+                                  (Path(root)/".driftlock"/"projects.json").exists())
     if not original_declares_policy:
-        policy = "remote_tracked"
+        policy="remote_tracked"
     snapshot = git_snapshot(checkout, policy=policy, expected_branch=task_meta.get("branch"),
                             candidate=candidate, head_policy=task_meta.get("candidate_head_policy", "exact"))
     cautions = []
@@ -228,6 +300,8 @@ def context_check(root, project_id=None):
                 lifecycle_blocking.append("accepted_candidate_invalid")
     if not isinstance(task_meta.get("task_id"),str):
         lifecycle_blocking.append("task_id_missing_or_invalid")
+    lifecycle_blocking.extend(task_lifecycle_blockers(task_meta))
+    lifecycle_blocking=sorted(set(lifecycle_blocking))
     return response("context.check", project_id=p["id"], task_id=task_meta.get("task_id"),
         task_path=task_path, status=task_meta.get("status"), review_status=task_meta.get("review_status"),
         permissions={"merge_allowed": task_meta.get("merge_allowed"), "deploy_allowed": task_meta.get("deploy_allowed")},
@@ -388,11 +462,17 @@ def doctor(root, project_id=None, script=None):
         if process is not None:
             try:
                 payload = json.loads(process.stdout)
-                if not isinstance(payload,dict) or not isinstance(payload.get("blocking_errors"),list):
-                    raise ValueError("Invalid document-check schema")
-                if process.returncode not in (0,1) or payload["blocking_errors"]:
+                if not isinstance(payload,dict) or payload.get("command")!="check" or payload.get("schema_version")!=2:
+                    raise ValueError("Missing expected Driftlock document-check schema")
+                results=payload.get("results")
+                errors=payload.get("blocking_errors")
+                if (not isinstance(results,list) or not isinstance(errors,list)
+                        or any(not isinstance(x,dict) or not isinstance(x.get("state"),str) for x in results)
+                        or any(not isinstance(x,dict) for x in errors)):
+                    raise ValueError("Malformed document-check results or errors")
+                if process.returncode not in (0,1) or errors:
                     checks["documents"]={"exit_code":process.returncode,"blocking":True,
-                                         "blocking_errors":payload["blocking_errors"]}
+                                         "blocking_errors":errors}
                 else:
                     checks["documents"]={"exit_code":process.returncode,"blocking":False,
                        "results":[r for r in payload.get("results",[]) if r.get("state")!="CURRENT"],

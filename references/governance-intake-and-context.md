@@ -39,8 +39,11 @@ Driftlock governs freshness and consistency, not a second truth database.
 
 The project registry maps logical project IDs to existing files. It can include
 an active_task pointer per project without changing a global handoff file.
-If an existing tools/handoff.py guard is present, doctor calls it independently.
-A new diagnostic must not silently overrule its verdict.
+Read-only doctor does **not** execute a project's tools/handoff.py guard.
+The operator must run that legacy authoritative handoff status command
+separately, after verifying the script and task execution context. A new
+diagnostic cannot overrule its verdict. If the guard has not been run, a
+doctor report alone is not a release authorization.
 
 ## Durable idea / problem / research capture
 
@@ -69,7 +72,8 @@ remote_tracked: upstream required and divergence examined.
 remote_publish_required: remote publication required by the project's release gate.
 
 Missing explicit policy on legacy handoffs does not excuse missing upstream;
-doctor also reports the old handoff check.
+doctor reports that the old handoff check was **not executed**. Run it
+separately when a project relies on that authority.
 
 The CLI never pushes, merges, deploys, changes active pointers, starts paid calls
 or deletes branches.

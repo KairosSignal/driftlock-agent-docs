@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from .common import fail, sha, within, response, text_file
 from .registry import select
-from .locks import exclusive
+from .atomic import change
 
 def propose(root, project, text, kind=None):
     if not text or not text.strip() or len(text) > 4000:
@@ -57,39 +57,16 @@ def record(root, project, kind, text, record_id, expected_sha, source, approved)
             execution_context_changed=False, task_created=False)
     if expected_sha != sha(preexisting):
         fail("INTAKE_VERSION_CONFLICT", f"Expected {expected_sha}, actual {sha(preexisting)}")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    guard = target.with_name("." + target.name + ".driftlock-write.lock")
-    if guard.is_symlink():
-        fail("UNSAFE_LOCK_PATH", "Refuse symlink lock path")
-    with exclusive(guard):
-        original = text_file(target) if target.exists() else ""
-        current_hash = sha(original)
-        payload_hash = sha(kind + "\x00" + text.strip() + "\x00" + source)
-        id_prefix = f"<!-- driftlock-intake:{record_id}:"
-        tag = id_prefix + payload_hash + " -->"
-        if id_prefix in original and tag not in original:
-            fail("INTAKE_ID_CONFLICT", "Record ID is already bound to different content")
-        if tag in original:
-            return response("intake.record", record_id=record_id, project_id=p["id"],
-                persisted=True, replay=True, path=str(target), sha256=current_hash,
-                execution_context_changed=False, task_created=False)
-        if expected_sha != current_hash:
-            fail("INTAKE_VERSION_CONFLICT", f"Expected {expected_sha}, actual {current_hash}; refresh before recording")
-        clean = text.strip().replace("\r", "").replace("<!--", "&lt;!--").replace("-->", "--&gt;")
-        # Keep all user text quoted; never treat it as authorized instructions.
-        quoted = "\n".join("> " + line for line in clean.split("\n"))
-        block = f"\n{tag}\n### {kind.upper()} {record_id}\n\nSource: {source}\nStatus: captured_unverified\n\n{quoted}\n"
-        content = original + ("" if not original or original.endswith("\n") else "\n") + block
-        fd, tmp = tempfile.mkstemp(prefix=".driftlock-intake-", dir=target.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
-                output.write(content)
-                output.flush()
-                os.fsync(output.fileno())
-            os.replace(tmp, target)
-        finally:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
-        return response("intake.record", record_id=record_id, project_id=p["id"], persisted=True,
-            replay=False, path=str(target), sha256=sha(content), execution_context_changed=False,
-            task_created=False, driftlock_verification_required=True)
+    payload_hash = sha(kind + "\x00" + text.strip() + "\x00" + source)
+    id_prefix = f"<!-- driftlock-intake:{record_id}:"
+    tag = id_prefix + payload_hash + " -->"
+    clean = text.strip().replace("\r", "").replace("<!--", "&lt;!--").replace("-->", "--&gt;")
+    quoted = "\n".join("> " + line for line in clean.split("\n"))
+    block = f"\n{tag}\n### {kind.upper()} {record_id}\n\nSource: {source}\nStatus: captured_unverified\n\n{quoted}\n"
+    content = preexisting + ("" if not preexisting or preexisting.endswith("\n") else "\n") + block
+    result = change(project_root, path, expected_sha, content,
+                    approve=approved, allow_create=True)
+    return response("intake.record", record_id=record_id, project_id=p["id"], persisted=True,
+        replay=False, path=str(target), sha256=result["sha256"],
+        execution_context_changed=False, task_created=False,
+        driftlock_verification_required=True)

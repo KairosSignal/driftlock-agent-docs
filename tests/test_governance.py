@@ -188,6 +188,9 @@ class MultiProjectRoutingTests(GovernanceCase):
         })
         config_path.write_text(json.dumps(config))
         from driftlock_next.audit import context_check
+        task = self.root/"tasks/TASK-171-R8-success.md"
+        task.write_text(task.read_text().replace("status: accepted_pending_integration",
+                       "current_project: company\nstatus: accepted_pending_integration"))
         first = context_check(self.root, "company")
         from driftlock_next.common import GovernanceError
         with self.assertRaises(GovernanceError):

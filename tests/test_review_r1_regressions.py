@@ -194,3 +194,69 @@ class TrustBoundaryTests(IndependentReviewRegressions):
             doctor(self.root,"governance",external)
         self.assertEqual(seen.exception.code,"UNTRUSTED_CHECKER")
         self.assertFalse((self.root/"WRITTEN").exists())
+
+class R2FindingRegressions(IndependentReviewRegressions):
+    def test_r2_structured_pass_with_body_fail_is_not_accepted(self):
+        report=self.root/"reports/accepted.md"
+        report.write_text(report.read_text()+"\nVerdict: FAIL\n")
+        self.git("add","reports/accepted.md")
+        self.git("commit","-qm","contradictory source")
+        register=self.root/"current/PROBLEM_REGISTER.md"
+        with self.assertRaises(GovernanceError) as e:
+            problem_transition(self.root,"governance","PROBLEM-003","resolved",
+                sha(register.read_text()),"TASK-200","reports/accepted.md",True)
+        self.assertEqual(e.exception.code,"RESOLUTION_CONTRADICTORY_REPORT")
+    def test_r2_duplicate_verdict_header_rejected(self):
+        report=self.root/"reports/accepted.md"
+        report.write_text(report.read_text().replace("verdict: PASS","verdict: FAIL\nverdict: PASS"))
+        self.git("add","reports/accepted.md")
+        self.git("commit","-qm","ambiguous source")
+        register=self.root/"current/PROBLEM_REGISTER.md"
+        with self.assertRaises(GovernanceError) as e:
+            problem_transition(self.root,"governance","PROBLEM-003","resolved",
+                sha(register.read_text()),"TASK-200","reports/accepted.md",True)
+        self.assertEqual(e.exception.code,"RESOLUTION_FIELD_AMBIGUOUS")
+    def test_r2_company_alias_cannot_modify_brand_plan(self):
+        p=self.root/".driftlock/projects.json"
+        j=json.loads(p.read_text())
+        j["projects"][0]["id"]="company"
+        p.write_text(json.dumps(j))
+        f=self.root/"planning/brand.md"
+        with self.assertRaises(GovernanceError) as e:
+            plan_transition(self.root,"company","PLAN-BI-001","draft",sha(f.read_text()),None,True)
+        self.assertEqual(e.exception.code,"PROJECT_OWNER_MISMATCH")
+    def test_r2_bad_release_matrix_blocks_task_and_context(self):
+        from driftlock_next import audit
+        cases=[
+          ("ready_for_review","fail","superseded",False,False),
+          ("planned","pass","active",True,True),
+          ("integrated_pending_deploy","pending","frozen",False,False),
+          ("closed","pass","frozen",False,False),
+        ]
+        for status,review,candidate,merge,deploy in cases:
+            text=("---\ntask_id: TASK-184\ncurrent_project: amazon_agent\n"
+                  "task_contract_version: 2\nstatus: "+status+"\nreview_status: "+review+
+                  "\ncandidate_state: "+candidate+"\nmerge_allowed: "+str(merge).lower()+
+                  "\ndeploy_allowed: "+str(deploy).lower()+"\n---\n")
+            self.put("tasks/task184.md",text)
+            with self.subTest(status=status,review=review),patch.object(
+                    audit,"git_snapshot",return_value={"state":"ok","blocking":[]}):
+                self.assertEqual(context_check(self.root,"amazon_agent")["state"],"blocked")
+                self.assertTrue(task_check(self.root,"amazon_agent")["blocking"])
+    def test_r2_wrong_r1_predecessor_is_blocked(self):
+        self.put("tasks/r1.md","---\ntask_id: AMZ-TASK-00001-R1\ncurrent_project: amazon_agent\n"
+                 "task_contract_version: 2\nstatus: in_progress\nreview_status: pending\n"
+                 "rework_of: AMZ-TASK-99999\n---\n")
+        report=task_check(self.root,"amazon_agent")
+        self.assertTrue(report["blocking"])
+        self.assertTrue(any(i["code"]=="rework_predecessor_mismatch"
+                            for i in report["contradictory_statuses"]))
+    def test_r2_quoted_task_ids_are_seen_in_unchecked_branches(self):
+        from driftlock_next.allocator import existing_task_ids_in_local_branches
+        start=self.git("branch","--show-current").strip()
+        self.git("checkout","-qb","work/quoted")
+        self.put("tasks/quoted.md",'---\ntask_id: "GOV-TASK-00009"\n---\n')
+        self.git("add","tasks/quoted.md")
+        self.git("commit","-qm","quoted task")
+        self.git("checkout","-q",start)
+        self.assertIn("GOV-TASK-00009",existing_task_ids_in_local_branches(self.root,"GOV"))

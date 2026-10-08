@@ -6,7 +6,7 @@ import re
 import tempfile
 from pathlib import Path
 from .common import fail, sha, text_file, response, git, frontmatter
-from .locks import exclusive, checked_private_directory
+from .locks import exclusive, checked_private_directory, pinned_directory, anchored_read_text, anchored_replace_text
 from .registry import select
 from .audit import tasks_for
 from .common import frontmatter
@@ -91,7 +91,7 @@ def existing_task_ids_in_local_branches(root, prefix):
             fail("ALLOCATOR_REF_SCAN_FAILED","Cannot safely inspect local task branches")
         if found.returncode==0:
             for line in found.stdout.splitlines():
-                match=re.match(r"^task_id:\s*([A-Za-z0-9-]+)",line)
+                match=re.match(r"^task_id:\s*[\"']?([A-Za-z0-9-]+)",line)
                 if match and match.group(1).startswith(prefix+"-TASK-"):
                     results.add(match.group(1))
     return results
@@ -113,8 +113,10 @@ def reserve(root, project_id, expected_sha, approve=False):
     checked_private_directory(path.parent, path.parent.parent)
     lock=path.parent/".task-id-reservations.lock"
     if lock.is_symlink():fail("UNSAFE_LOCK","Symlinked allocator lock")
-    with exclusive(lock):
-        original=text_file(path) if path.exists() else ""
+    with pinned_directory(path.parent,path.parent.parent) as dir_fd:
+      with exclusive(lock,dir_fd=dir_fd):
+        original=(anchored_read_text(dir_fd,path.name,limit=1048576) if dir_fd is not None
+                  else text_file(path) if path.exists() else "")
         if sha(original)!=expected_sha:
             fail("VERSION_CONFLICT","Allocator snapshot changed, retry with current SHA")
         state=json.loads(original) if original else {"schema_version":1,"reservations":[]}
@@ -133,14 +135,17 @@ def reserve(root, project_id, expected_sha, approve=False):
         task_id=f"{prefix}-TASK-{next_number:05d}"
         state["reservations"].append({"task_id":task_id,"project_id":p["id"],"status":"reserved_not_authorized"})
         content=json.dumps(state,ensure_ascii=False,indent=2)+"\n"
-        name=None
-        try:
-            fp, name=tempfile.mkstemp(prefix=".driftlock-reservations-",dir=path.parent)
-            with os.fdopen(fp,"w",encoding="utf-8") as out:
-                out.write(content);out.flush();os.fsync(out.fileno())
-            os.replace(name,path)
-        finally:
-            if name and os.path.exists(name):os.unlink(name)
+        if dir_fd is not None:
+            anchored_replace_text(dir_fd,path.name,content)
+        else:
+            name=None
+            try:
+                fp, name=tempfile.mkstemp(prefix=".driftlock-reservations-",dir=path.parent)
+                with os.fdopen(fp,"w",encoding="utf-8") as out:
+                    out.write(content);out.flush();os.fsync(out.fileno())
+                os.replace(name,path)
+            finally:
+                if name and os.path.exists(name):os.unlink(name)
         return response("task.reserve",project_id=p["id"],task_id=task_id,
             record_path=str(path),sha256=sha(content),state="reserved_not_authorized",
             task_created=False,execution_authorized=False,

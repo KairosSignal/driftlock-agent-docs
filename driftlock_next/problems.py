@@ -128,6 +128,24 @@ def _verify_resolution_claim(root, linked_task_id, evidence, task_meta):
     if committed.returncode or committed.stdout != text_file(path):
         fail("UNCOMMITTED_EVIDENCE", "Review evidence differs from HEAD")
     body = text_file(path)
+    if not body.startswith("---\n") or "\n---" not in body[4:]:
+        fail("RESOLUTION_REPORT_STRUCTURE","Review report requires complete YAML frontmatter")
+    split=body.find("\n---",4)
+    header=body[4:split]
+    rest=body[split+4:]
+    required={"task_id","verdict","review_status","candidate_commit"}
+    for key in required:
+        matches=re.findall(r"(?m)^"+re.escape(key)+r":[ \t]*.*$", header)
+        if len(matches)!=1:
+            fail("RESOLUTION_FIELD_AMBIGUOUS", f"Review field {key} must occur exactly once")
+    # A second verdict or review state in the body, even if quoted, must be
+    # reconciled by a reviewer rather than accepted as a single PASS.
+    if re.search(r"(?im)^\s*(?:verdict|review_status):\s*\S+",rest):
+        fail("RESOLUTION_CONTRADICTORY_REPORT","Report contains another verdict/status outside authoritative header")
+    if (re.search(r"(?im)\b(?:final[ \t]+)?verdict\b[^\n]{0,28}\b(?:FAIL|REJECTED|BLOCKED)\b",rest)
+        or re.search(r"(?i)\bnot[ \t]+(?:independently[ \t]+)?(?:verified|accepted|approved)\b",rest)
+        or re.search(r"(?im)\b(?:final[ \t]+)?review[ \t]+(?:result|status)\b[^\n]{0,28}\b(?:FAIL|REJECTED)\b",rest)):
+        fail("RESOLUTION_CONTRADICTORY_REPORT","Negative review outcome conflicts with structured PASS")
     fields = frontmatter(body)
     # Exact, unambiguous verdict and task fields are required; never infer via prose.
     if fields.get("task_id") != linked_task_id:

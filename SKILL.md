@@ -22,6 +22,26 @@ create a competing documentation source of truth.
 If no valid L0 exists, treat the project as unmanaged. Run `discover`; do not
 guess which status file is authoritative.
 
+## R2 release-safety repair scope
+
+R2 found a few more false-acceptance paths even after R1 tests passed.
+Never infer accepted review status from a single PASS word: reject ambiguous,
+duplicated or conflicting conclusions in a tracked report, and require
+explicit independent source verification. A reviewed TASK must also satisfy
+the complete versioned lifecycle and candidate contract; Git state alone
+cannot confer merge/deploy permission.
+
+Company overview is read-only for records owned by other projects and must
+apply the *owning* TASK's remote requirement, not its own permissive default.
+The conservative doctor result is review_required until external authority
+guards are separately run and freshness is verified. Versioned review and
+TASK-closure checks are not equivalent to release authorization.
+
+POSIX file writes use pinned parent directory descriptors, inode-checked locks
+and atomic replacements. This assumes the repository's owning OS identity
+is trusted; it is not a hardened multiuser service against same-UID malicious
+actors. Native Windows file security requires separate validation.
+
 ## R1 lifecycle and evidence hardening
 
 Do not close a problem from a plausible filename or a positive word.

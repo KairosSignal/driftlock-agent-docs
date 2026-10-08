@@ -6,6 +6,7 @@ from pathlib import Path
 from .atomic import change
 from .common import fail, frontmatter, response, text_file, within
 from .registry import select
+from .locks import exclusive, pinned_directory
 from .ownership import visible, require_owner
 
 STATES = {"draft","under_review","approved","active_planning","implemented","parked","superseded","rejected"}
@@ -99,7 +100,7 @@ def validate(root, project=None, proposed=None):
         legacy_unknown_status=len(legacy), legacy_samples=legacy[:8],
         issues=problems, state="blocked" if problems else "ok")
 
-def transition(root, project, plan_id, status, expected_sha, evidence, approve):
+def _transition_locked(root, project, plan_id, status, expected_sha, evidence, approve):
     if status not in STATES:
         fail("PLAN_STATE",f"Unknown state: {status}")
     p=select(root,project)
@@ -110,7 +111,9 @@ def transition(root, project, plan_id, status, expected_sha, evidence, approve):
     require_owner(meta,p,"plan")
     # Company-wide read access is not cross-project write permission.
     from .ownership import owner
-    if p["id"]=="governance" and owner(meta,"plan") not in (None,"governance"):
+    if p["id"] in ("governance","company") and (
+            owner(meta,"plan") not in ("governance","company") and
+            (p.get("_registry_project_count",1)>1 or owner(meta,"plan") is not None)):
         fail("PROJECT_OWNER_MISMATCH","Use the owning project for PLAN transition")
     prior=meta.get("status")
     if prior not in STATES:
@@ -145,14 +148,27 @@ def transition(root, project, plan_id, status, expected_sha, evidence, approve):
     proposed_meta["_path"]=str(path)
     baseline=validate(root,project)
     preview=validate(root,project,proposed_meta)
-    # Legacy pre-existing violations are not silently rewritten, but a write
-    # may never introduce a new violation in its own scope/graph.
-    before={json.dumps(issue,sort_keys=True,default=str) for issue in baseline["issues"]}
-    new_issues=[issue for issue in preview["issues"]
-                if json.dumps(issue,sort_keys=True,default=str) not in before]
-    if new_issues:
-        fail("PLAN_GRAPH_INVALID_AFTER_TRANSITION", f"Proposed update violates Plan graph: {new_issues}")
+    # Never write a PLAN into a known inconsistent graph, including a
+    # "no-op" status change or an existing unresolved illegal successor.
+    if baseline["issues"]:
+        fail("PLAN_GRAPH_UNHEALTHY", f"Current Plan graph needs reconciliation: {baseline['issues']}")
+    if preview["issues"]:
+        fail("PLAN_GRAPH_INVALID_AFTER_TRANSITION", f"Proposed update violates Plan graph: {preview['issues']}")
     relative=str(path.relative_to(p["_resolved_root"]))
     result=change(p["_resolved_root"],relative,expected_sha,replacement,approve=approve)
     return response("plan.transition",project_id=p["id"],plan_id=plan_id,
         previous=prior,status=status,**result,task_created=False,execution_context_changed=False)
+
+
+def transition(root, project, plan_id, status, expected_sha, evidence, approve):
+    """Serialize validation and modification against all cooperative PLAN writers."""
+    if not approve:
+        fail("APPROVAL_REQUIRED","PLAN changes must be explicitly authorized")
+    p=select(root,project)
+    folder=within(Path(p["_resolved_root"]),p.get("planning","planning"),allow_missing=False)
+    if not folder.is_dir() or folder.is_symlink():
+        fail("PLAN_ROOT_UNSAFE","Planning root must be a real directory")
+    guard=folder/".driftlock-plan-graph.lock"
+    with pinned_directory(folder,Path(p["_resolved_root"])) as dir_fd:
+        with exclusive(guard,dir_fd=dir_fd):
+            return _transition_locked(root,project,plan_id,status,expected_sha,evidence,approve)
