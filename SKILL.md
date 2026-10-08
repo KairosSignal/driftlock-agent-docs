@@ -22,6 +22,27 @@ create a competing documentation source of truth.
 If no valid L0 exists, treat the project as unmanaged. Run `discover`; do not
 guess which status file is authoritative.
 
+## R5 strict terminal-closure attestation format
+
+For terminal Problem resolved transitions, do not supply an ordinary review
+narrative, even if it has a PASS verdict in YAML. Prepare a dedicated
+acceptance-only Markdown attestation, independently reviewed and committed
+to HEAD, with exactly four fields: task_id, verdict: PASS,
+review_status: accepted, and candidate_commit (full 40-char SHA).
+Only an empty body or one exact heading is permitted:
+# Independent review, # Review outcome,
+# Independent acceptance attestation, or
+# Independent review: followed by the exact task_id.
+
+The tool checks the attestation content, tracked HEAD identity, TASK closure,
+candidate SHA and review metadata, but cannot prove independence or
+veracity merely from the file. The operator must verify reviewer provenance
+separately, and only explicit approved transitions change Problem state.
+If the source review includes historical FAIL attempts, keep those in a
+different tracked detailed report. Do not copy them into closure attestation.
+This intentionally fails closed instead of trying to understand arbitrary
+human prose or model-generated status text.
+
 ## R4 closure report authority and shared rework verification
 
 For terminal Problem closure, a report containing historical FAIL/REJECTED/

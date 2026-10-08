@@ -138,21 +138,30 @@ def _verify_resolution_claim(root, linked_task_id, evidence, task_meta):
         matches=re.findall(r"(?m)^"+re.escape(key)+r":[ \t]*.*$", header)
         if len(matches)!=1:
             fail("RESOLUTION_FIELD_AMBIGUOUS", f"Review field {key} must occur exactly once")
-    # Closure reports are deliberately narrower than general Review narratives:
-    # an evidence artifact may not contain any negative final-outcome token
-    # anywhere in the body. For reports discussing historical FAIL attempts,
-    # write a separate unambiguous acceptance record instead of guessing which
-    # outcome is authoritative. No loose "PASS" token ever authorizes closure.
-    normalized = re.sub(r"\s+", " ", rest).casefold()
-    forbidden = (
-        re.search(r"(?<![\w])(?:fail|failed|rejected|blocked)(?![\w])", normalized)
-        or re.search(r"\bnot\s+(?:independently\s+)?(?:verified|accepted|approved)\b", normalized)
-        or re.search(r"(?:审核|复核|验收)(?:明确)?(?:未通过|失败)|\b(?:未验证|未验收|未通过|不通过|拒绝)\b", normalized)
-        or re.search(r"(?i)^\s*(?:verdict|review_status)\s*:\s*\S+", rest, re.MULTILINE)
-    )
-    if forbidden:
+    # Closure evidence is not a natural-language classifier. It is a narrowly
+    # formatted acceptance attestation. Detailed review narratives belong in
+    # separate tracked files, where they cannot create competing verdicts.
+    permitted_bodies={
+        "",
+        "# Independent review",
+        "# Review outcome",
+        "# Independent acceptance attestation",
+        "# Independent review: "+linked_task_id,
+    }
+    if rest.strip() not in permitted_bodies:
         fail("RESOLUTION_CONTRADICTORY_REPORT",
-             "Closing evidence includes a negative or ambiguous verdict; use a dedicated acceptance-only report")
+             "Closure requires a dedicated acceptance-only record; free-text review content is not authoritative")
+    # Reject unknown fields and YAML continuations rather than interpreting
+    # ambiguous/double-specified status claims from loosely parsed metadata.
+    allowed_fields={"task_id","verdict","review_status","candidate_commit"}
+    header_lines=[line for line in header.splitlines() if line.strip()]
+    if len(header_lines)!=4 or any(
+        re.fullmatch(r"[a-z_]+:[ \	]+[^\n]+",line) is None
+        or line.split(":",1)[0] not in allowed_fields
+        for line in header_lines
+    ):
+        fail("RESOLUTION_REPORT_STRUCTURE",
+             "Acceptance record must contain exactly four scalar metadata fields")
     fields = frontmatter(body)
     # Exact, unambiguous verdict and task fields are required; never infer via prose.
     if fields.get("task_id") != linked_task_id:

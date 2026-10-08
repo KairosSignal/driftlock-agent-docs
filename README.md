@@ -67,6 +67,46 @@ See `references/problem-register-and-feedback.md` for the recommended states,
 minimum fields, task boundary, deduplication rules, and a Driftlock index
 example.
 
+## Driftlock Unified 0.4.5 — R5 explicit acceptance-attestation protocol
+
+R5 independently reviewed v0.4.4 (69e5ef4) and reported FAIL:
+Markdown _FAIL_ / __FAIL__ still bypassed outcome-word parsing.
+
+v0.4.5 does **not** attempt another natural-language classifier. Terminal
+Problem closure now requires a dedicated, tracked, unchanged acceptance-only
+attestation with **exactly four scalar metadata fields** and a short fixed
+heading (or no body). Arbitrary Markdown body content is denied, including
+negative/positive prose, emphasis, tables or alternate verdicts.
+
+The four fields are exactly:
+- task_id: exact authoritative closed TASK identifier
+- verdict: PASS
+- review_status: accepted
+- candidate_commit: exact 40-character lowercase candidate SHA
+
+Example:
+
+    ---
+    task_id: TASK-200
+    verdict: PASS
+    review_status: accepted
+    candidate_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    ---
+    # Independent acceptance attestation
+
+The report must be HEAD-committed and match the current local file. It is a
+closure *protocol artifact*, not a substitute for independent source review.
+Rich reviewer notes and historical FAIL records remain in separate tracked
+reports and must be independently checked before acceptance is authorized.
+
+A reviewer saying PASS in a Git file alone cannot cryptographically prove
+independence or factual correctness. An operator must verify review provenance
+and explicitly authorize transition. No model inferred acceptance from prose.
+Existing approvals are not migrated or rewritten automatically.
+
+No installed Skill, Company Control authority, Amazon service or production
+environment is touched by this candidate. Independent R6 review is required.
+
 ## Driftlock Unified 0.4.4 — R4 minimal acceptance-gate repair candidate
 
 R4 independently reviewed Skill 938dd761 / Company Control a551ac6
