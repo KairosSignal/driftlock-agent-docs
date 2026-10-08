@@ -1,6 +1,6 @@
 ---
 name: driftlock
-description: Govern documentation in small through large multi-agent projects using progressive L0/L1/L2 indexes, deterministic freshness checks, dependency propagation, context budgets, and archive isolation. Use when creating, auditing, reorganizing, validating, compacting, or archiving project docs; detecting stale status or contract files after code changes; establishing a project map; controlling docs/workroom/task/report sprawl; or preserving unresolved user feedback without turning every observation into a task.
+description: Govern documentation in small through large multi-agent projects using progressive L0/L1/L2 indexes, deterministic freshness checks, dependency propagation, context budgets, and archive isolation. Use when creating, auditing, reorganizing, validating, compacting, or archiving project docs; detecting stale status or contract files after code changes; establishing a project map; controlling docs/workroom/task/report sprawl; or preserving unresolved user feedback without turning every observation into a task. Also use for multi-project context routing, safe local-only Git work, idea/problem/plan intake without task switching, and governance diagnostics.
 ---
 
 # Driftlock
@@ -22,6 +22,16 @@ create a competing documentation source of truth.
 If no valid L0 exists, treat the project as unmanaged. Run `discover`; do not
 guess which status file is authoritative.
 
+## Conversation, task and project boundary
+
+New discussion topics, questions, feature ideas or bug reports never silently
+switch the active execution task, change handoff, grant deployment authority or
+create a formal TASK. Read references/governance-intake-and-context.md before
+handling mid-task feedback and references/governance-planning-and-identity.md
+before changing a Plan, project identity, prefix or long-term Skill rules.
+The host AI interprets the user's intent and can propose a classification;
+the CLI never pretends to passively capture conversations.
+
 ## Commands
 
 Resolve the directory containing this `SKILL.md` once as `<skill-root>`. Run
@@ -34,13 +44,23 @@ python3 <skill-root>/scripts/driftlock.py check <project-root>
 python3 <skill-root>/scripts/driftlock.py impact <project-root> [--since COMMIT]
 python3 <skill-root>/scripts/driftlock.py verify <project-root> --doc DOC_ID --status-effect initial|changed|unchanged
 python3 <skill-root>/scripts/driftlock.py archive-plan <project-root>
+python3 <skill-root>/scripts/driftlock.py project list <project-root>
+python3 <skill-root>/scripts/driftlock.py project status <project-root> --project governance
+python3 <skill-root>/scripts/driftlock.py context check <project-root> --project intelligence
+python3 <skill-root>/scripts/driftlock.py intake propose <project-root> --project governance --kind idea --text "new idea"
+python3 <skill-root>/scripts/driftlock.py task check <project-root> --project governance --id TASK-171
+python3 <skill-root>/scripts/driftlock.py plan list <project-root> --project governance
+python3 <skill-root>/scripts/driftlock.py git audit <project-root> --project governance
+python3 <skill-root>/scripts/driftlock.py doctor check <project-root> --project governance
 ```
 
 Use `--format json` for agents and automation.
 
 - `discover`, `check`, `impact`, and `archive-plan` are always read-only.
-- `verify` is the only command that writes, and it writes only
-  `.driftlock.lock.json` atomically.
+- Among original freshness commands, verify alone writes the lock atomically.
+- The optional governance intake record command is a separate, explicitly
+  approved writer into a configured authoritative intake file.
+- All other new governance commands are read-only; no task/branch switch.
 - Never call `verify` until an AI or human has reviewed the real code,
   configuration, child documents, and contracts.
 - Do not verify relevant uncommitted paths. Unrelated dirty paths are allowed.

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "id": "governance",
+      "name": "Company Control",
+      "root": ".",
+      "repository": "KairosSignal/engineering-workspace",
+      "task_prefix": "GOV",
+      "tasks": "tasks",
+      "planning": "planning",
+      "handoff": "CURRENT_HANDOFF.md",
+      "remote_policy": "local_only",
+      "intake": {
+        "problem": "current/PROBLEM_REGISTER.md",
+        "idea": "planning/IDEA_INBOX.md",
+        "research": "planning/RESEARCH_INBOX.md"
+      }
+    },
+    {
+      "id": "intelligence",
+      "name": "External Intelligence",
+      "root": ".",
+      "repository": "KairosSignal/amazon-agent",
+      "task_prefix": "INT",
+      "tasks": "tasks",
+      "planning": "planning",
+      "active_task": "tasks/TASK-171-D-R8-nullable-pricing-metadata.md",
+      "remote_policy": "local_only",
+      "intake": {}
+    }
+  ]
+}

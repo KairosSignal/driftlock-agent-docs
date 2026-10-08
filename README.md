@@ -67,7 +67,35 @@ See `references/problem-register-and-feedback.md` for the recommended states,
 minimum fields, task boundary, deduplication rules, and a Driftlock index
 example.
 
-## Current Release: 0.2.2
+## Driftlock Next 0.3.0 — local candidate
+
+Adds opt-in multi-project governance with one installable Skill, preserving the
+original five CLI commands and unchanged index schema/lock format.
+
+Use the existing scripts/driftlock.py entry point:
+
+    python3 scripts/driftlock.py project list /path/to/control
+    python3 scripts/driftlock.py doctor check /path/to/control
+    python3 scripts/driftlock.py git audit /path/to/control
+    python3 scripts/driftlock.py intake propose /path/to/control --kind idea --text "new idea"
+
+For multi-project routing, adapt examples/company-control/projects.json into
+the target project's .driftlock/projects.json. Use --project when multiple
+logical projects are registered.
+
+For durable user-authorized intake, configure idea/problem/research paths,
+then run intake record with --project, --kind, --text, --id, --source,
+--expected-sha (SHA-256 of the current file, empty file if none) and --approve.
+It atomically appends unverified input and returns the actual path/hash.
+It does not create TASKs, switch context, deploy, push, or execute paid calls.
+
+See references/governance-intake-and-context.md and
+references/governance-planning-and-identity.md.
+
+The local candidate has NOT replaced the installed Codex Skill and has NOT
+been published to GitHub. Deployment/installation remain separate actions.
+
+## Previous Release: 0.2.2
 
 `0.2.2` adds recommended task lifecycle/status semantics so repository-native
 projects can distinguish implementation, review acceptance, integration,
