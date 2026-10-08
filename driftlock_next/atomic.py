@@ -1,10 +1,10 @@
 """Optimistic filesystem-safe writes for already-authorized source documents."""
 from __future__ import annotations
-import fcntl
 import os
 import tempfile
 from pathlib import Path
 from .common import fail, sha, text_file, within
+from .locks import exclusive
 
 def change(project_root, relative, expected_sha, replacement, *, approve, allow_create=False):
     if not approve:
@@ -19,8 +19,7 @@ def change(project_root, relative, expected_sha, replacement, *, approve, allow_
     lock = target.parent / ("." + target.name + ".driftlock-write.lock")
     if lock.is_symlink():
         fail("UNSAFE_LOCK", "Refuse symlink lock file")
-    with lock.open("a+b") as fp:
-        fcntl.flock(fp, fcntl.LOCK_EX)
+    with exclusive(lock):
         current = text_file(target) if target.exists() else ""
         digest = sha(current)
         if current == replacement:

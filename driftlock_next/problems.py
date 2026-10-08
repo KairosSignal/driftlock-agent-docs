@@ -1,10 +1,12 @@
 """Existing markdown Problem Register adapter: no parallel record store."""
 from __future__ import annotations
 import re
+from pathlib import Path
 from difflib import SequenceMatcher
 from .atomic import change
 from .common import fail, frontmatter, response, text_file, within
 from .registry import select
+from .ownership import require_owner
 from .audit import tasks_for
 
 PROBLEM_STATES = {"needs_revalidation", "confirmed", "planned", "in_task", "resolved", "obsolete", "parked"}
@@ -103,25 +105,45 @@ def reconcile(root, project=None):
         caveat="Only confirmed task closure plus verification evidence can authorize problem resolution")
 
 def task_metadata(project, task_id):
-    for path in tasks_for(project):
-        meta = frontmatter(text_file(path))
-        if meta.get("task_id") == task_id:
-            return meta, path
-    fail("TASK_NOT_FOUND", f"Cannot reference missing authoritative task {task_id}")
+    matches = [(frontmatter(text_file(path)),path) for path in tasks_for(project)
+               if frontmatter(text_file(path)).get("task_id")==task_id]
+    if len(matches)!=1:
+        fail("TASK_ID_NOT_UNIQUE",f"Cannot prove a unique authoritative TASK {task_id}: {len(matches)}")
+    return matches[0]
 
-def _verify_resolution_claim(root, linked_task_id, evidence):
-    """A user-supplied path alone is not proof of a successful Review."""
-    if not evidence or not isinstance(evidence,str):
-        fail("RESOLUTION_EVIDENCE_REQUIRED","A real review/report path is required")
+def _verify_resolution_claim(root, linked_task_id, evidence, task_meta):
+    """Only an exact, committed, structured PASS for the correct candidate."""
+    from .common import git
+    if not evidence or not isinstance(evidence, str):
+        fail("RESOLUTION_EVIDENCE_REQUIRED", "A tracked Review report is required")
     path = within(root, evidence, allow_missing=False)
-    if not path.is_file() or path.suffix.lower() not in (".md",".txt",".json"):
-        fail("RESOLUTION_EVIDENCE_FORMAT","Evidence must refer to a checked-in readable report")
-    content = text_file(path)
-    if linked_task_id not in content:
-        fail("RESOLUTION_TASK_MISMATCH","Evidence file does not mention the linked TASK")
-    if not re.search(r"(?i)\b(pass|accepted|verified|closed)\b",content):
-        fail("RESOLUTION_NOT_VERIFIED","Report lacks an explicit positive review/verification statement")
-    return str(path)
+    if not path.is_file() or path.suffix.lower() not in (".md", ".json"):
+        fail("RESOLUTION_EVIDENCE_FORMAT", "Evidence must be a trusted review report")
+    rel = str(path.relative_to(Path(root)))
+    # A loose positive word or an untracked, edited report must never close a defect.
+    result = git(root, "ls-files", "--error-unmatch", "--", rel, check=False)
+    if result.returncode:
+        fail("UNTRACKED_EVIDENCE", "Review evidence is not in the Git index")
+    committed = git(root, "show", "HEAD:" + rel, check=False)
+    if committed.returncode or committed.stdout != text_file(path):
+        fail("UNCOMMITTED_EVIDENCE", "Review evidence differs from HEAD")
+    body = text_file(path)
+    fields = frontmatter(body)
+    # Exact, unambiguous verdict and task fields are required; never infer via prose.
+    if fields.get("task_id") != linked_task_id:
+        fail("RESOLUTION_TASK_MISMATCH", "Review report task_id is not exact")
+    if fields.get("verdict") != "PASS":
+        fail("RESOLUTION_NOT_VERIFIED", "Review verdict must be exactly PASS")
+    if task_meta.get("review_status") != "pass":
+        fail("TASK_REVIEW_NOT_PASSED", "TASK review_status is not pass")
+    candidate = task_meta.get("candidate_commit")
+    if not isinstance(candidate, str) or not re.fullmatch(r"[a-f0-9]{40}", candidate):
+        fail("TASK_CANDIDATE_MISSING", "Closure requires an exact candidate SHA")
+    if fields.get("candidate_commit") != candidate:
+        fail("RESOLUTION_CANDIDATE_MISMATCH", "Review candidate SHA differs from TASK")
+    if fields.get("review_status") != "accepted":
+        fail("RESOLUTION_NOT_ACCEPTED", "Review must be independently accepted")
+    return rel
 
 
 def transition(root, project, problem_id, next_state, expected_sha,
@@ -131,6 +153,8 @@ def transition(root, project, problem_id, next_state, expected_sha,
     if next_state not in PROBLEM_STATES:
         fail("PROBLEM_STATE", "Unknown problem state")
     p, rel, path = problem_path(root, project)
+    if p["id"] not in ("governance","company") and p.get("_registry_project_count",1)>1:
+        fail("PROBLEM_AUTHORITY_NOT_SCOPED", "Shared Company Control register requires governance scope")
     content = text_file(path)
     candidates = [r for r in rows(content) if r["id"] == problem_id]
     if len(candidates) != 1:
@@ -155,7 +179,7 @@ def transition(root, project, problem_id, next_state, expected_sha,
         if next_state == "resolved":
             if meta.get("status") != "closed":
                 fail("TASK_NOT_CLOSED", "Closed task needed before resolution")
-            _verify_resolution_claim(p["_resolved_root"], task_id, evidence)
+            _verify_resolution_claim(p["_resolved_root"], task_id, evidence, meta)
     if next_state in END_STATES and (not evidence or len(evidence.strip()) < 8):
         fail("OUTCOME_EVIDENCE_REQUIRED", "Terminal state requires evidence reference")
     if next_state == "resolved" and not task_id:
@@ -165,7 +189,13 @@ def transition(root, project, problem_id, next_state, expected_sha,
     if task_id:
         if len(cols) < 4:
             fail("PROBLEM_SCHEMA", "Problem register needs task linkage column")
-        cols[3] = task_id + " (ref)"
+        # Existing Gate/scope/secondary linkage is authoritative.  Do not
+        # rewrite it just because the caller repeats the same task ID.
+        original_links = re.findall(r"(?<![A-Za-z0-9-])(?:[A-Z]{2,5}-)?TASK-\d+(?:-[A-Z])?(?:-R\d+)?", cols[3])
+        if original_links and task_id not in original_links:
+            fail("PROBLEM_TASK_REASSIGNMENT_REQUIRES_SEPARATE_REVIEW", "Do not replace an existing task linkage")
+        if not original_links:
+            cols[3] = task_id
     if evidence:
         if len(cols) < 5:
             fail("PROBLEM_SCHEMA", "Problem register needs followup column")

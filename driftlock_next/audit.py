@@ -7,9 +7,10 @@ import sys
 from pathlib import Path
 from .common import fail, frontmatter, git, response, text_file, within
 from .registry import select, project_list
+from .ownership import visible, require_owner, owner
 
 VALID_POLICIES = ("local_only", "remote_tracked", "remote_publish_required")
-TASK_ID = re.compile(r"^(?:(?:IC|AMZ|INT|BI|KB|GOV)-)?TASK-[0-9]+(?:-[A-Z])?(?:-R[0-9]+)?$")
+TASK_ID = re.compile(r"^(?:(?:IC|AMZ|INT|BI|KB|GOV)-)?TASK-[0-9]+[A-Z0-9]*(?:-[A-Z0-9]+)*$")
 NAMED_TASK = re.compile(r"^((?:(?:IC|AMZ|INT|BI|KB|GOV)-)?TASK-\d+(?:-[A-Z])?(?:-R\d+)?)")
 
 def git_snapshot(repo, policy="local_only", expected_branch=None, candidate=None,
@@ -74,7 +75,10 @@ def tasks_for(project):
         return []
     if not folder.is_dir():
         fail("TASK_ROOT", "Task directory must be a directory")
-    return sorted(p for p in folder.glob("*.md") if p.is_file() and not p.is_symlink())
+    return sorted(
+        f for f in folder.glob("*.md") if f.is_file() and not f.is_symlink()
+        and visible(frontmatter(text_file(f)),project,"task",project.get("_registry_project_count"))
+    )
 
 def task_check(root, project_id=None, task_id=None):
     p = select(root, project_id)
@@ -90,6 +94,14 @@ def task_check(root, project_id=None, task_id=None):
             incomplete.append(file.name)
             ident = None
         if ident:
+            if not isinstance(ident,str):
+                fail("INVALID_TASK_ID_TYPE", f"{file.name}: task_id must be text")
+            if not TASK_ID.fullmatch(ident):
+                if meta.get("task_contract_version") in ("2",2):
+                    bad_states.append({"task_id":ident,"code":"INVALID_NEW_TASK_ID"})
+                else:
+                    review_warnings.append({"task_id":ident,"code":"LEGACY_ID_FORMAT",
+                                            "file":file.name})
             by_id.setdefault(ident, []).append(file.name)
             state=meta.get("status")
             review=meta.get("review_status")
@@ -104,18 +116,30 @@ def task_check(root, project_id=None, task_id=None):
                         bad_states.append(finding)
                     else:
                         review_warnings.append(finding)
+            if meta.get("task_contract_version") in ("2",2):
+                if state in ("closed","accepted","accepted_pending_integration","integrated") and review != "pass":
+                    bad_states.append({"task_id":ident,"code":"REVIEW_NOT_ACCEPTED","status":state,"review":review})
+                if state in ("ready_for_review", "rework_required") and (
+                    meta.get("merge_allowed") is True or meta.get("deploy_allowed") is True):
+                    bad_states.append({"task_id":ident,"code":"UNAUTHORIZED_RELEASE_PERMISSION"})
+                if state=="closed" and meta.get("candidate_state") in ("superseded","rejected","none"):
+                    bad_states.append({"task_id":ident,"code":"CLOSED_INVALID_CANDIDATE"})
             if state=="rework_required" and review=="pass":
                 bad_states.append({"task_id":ident,"status":state,"review":review})
             if state=="ready_for_review" and review=="pass":
                 review_warnings.append({"task_id":ident,"code":"READY_BUT_REVIEW_ALREADY_PASSED"})
-            if ident.endswith("-R1") and not meta.get("rework_of"):
+            rework_match = re.fullmatch(r"(.+)-R([1-9][0-9]*)", ident)
+            if rework_match and not meta.get("rework_of"):
                 rework_chain_issues.append({"task_id":ident,"code":"MISSING_REWORK_PREDECESSOR"})
-            matching = re.match(r"^(.*)-R([2-9][0-9]*)$",ident)
-            if matching and meta.get("rework_of"):
+            matching = rework_match
+            if matching and int(matching.group(2)) > 1 and meta.get("rework_of"):
                 needed=f"{matching.group(1)}-R{int(matching.group(2))-1}"
                 if meta["rework_of"]!=needed:
-                    rework_chain_issues.append({"task_id":ident,"code":"REWORK_PREDECESSOR_MISMATCH",
-                                                "expected":needed,"actual":meta["rework_of"]})
+                    finding={"task_id":ident,"code":"REWORK_PREDECESSOR_MISMATCH",
+                             "expected":needed,"actual":meta["rework_of"]}
+                    rework_chain_issues.append(finding)
+                    if meta.get("task_contract_version") in ("2",2):
+                        bad_states.append(finding)
             if meta.get("rework_of"):
                 rework_refs.append((ident, meta["rework_of"]))
         records.append((ident, file, meta))
@@ -136,13 +160,20 @@ def task_check(root, project_id=None, task_id=None):
         legacy_missing_task_id={"count": len(incomplete), "samples": incomplete[:8]},
         broken_rework=broken_rework, contradictory_statuses=bad_states,
         review_warnings=review_warnings,rework_chain_issues=rework_chain_issues,
-        blocking=bool(duplicates or broken_rework or bad_states))
+        blocking=bool(duplicates or broken_rework or bad_states or
+                      any(t["code"]=="MISSING_REWORK_PREDECESSOR" and
+                          any(m.get("task_contract_version") in ("2",2) for x,f,m in records if x==t["task_id"])
+                          for t in rework_chain_issues)))
 
 def context_check(root, project_id=None):
     p = select(root, project_id)
     pr = Path(p["_resolved_root"])
     direct_task = p.get("active_task")
     card = within(pr, p.get("handoff", "CURRENT_HANDOFF.md"), allow_missing=True)
+    # Other projects must never inherit governance's global CURRENT_HANDOFF.
+    if not direct_task and p["id"] not in ("governance","company") and p.get("_registry_project_count",1)>1:
+        return response("context.check",project_id=p["id"],state="unconfigured",
+                        reason="no_project_specific_task_pointer",execution_context_changed=False)
     if not card.exists() and not direct_task:
         return response("context.check", project_id=p["id"], state="unconfigured", reason="handoff_missing",
                         execution_context_changed=False)
@@ -156,6 +187,9 @@ def context_check(root, project_id=None):
         return response("context.check", project_id=p["id"], state="blocked", reason="referenced_task_missing",
                         task_path=task_path, execution_context_changed=False)
     task_meta = frontmatter(text_file(task_file))
+    if not isinstance(task_meta.get("task_id"),str):
+        fail("INVALID_TASK_ID_TYPE","Current task needs a textual task ID")
+    require_owner(task_meta,p,"task")
     candidate = task_meta.get("candidate_commit")
     checkout = task_meta.get("repository_path") or task_meta.get("worktree") or str(pr)
     if not isinstance(checkout, str):
@@ -172,12 +206,33 @@ def context_check(root, project_id=None):
     cautions = []
     if not original_declares_policy:
         cautions.append("remote_policy_not_declared; existing handoff contract remains authoritative")
-    if task_meta.get("merge_allowed") is True and task_meta.get("review_status") not in ("pass", "accepted"):
-        cautions.append("merge_permission_conflicts_with_review")
+    lifecycle_blocking=[]
+    if task_meta.get("merge_allowed") is True and task_meta.get("review_status") != "pass":
+        lifecycle_blocking.append("merge_permission_conflicts_with_review")
+    if task_meta.get("deploy_allowed") is True and task_meta.get("review_status") != "pass":
+        lifecycle_blocking.append("deploy_permission_conflicts_with_review")
+    if task_meta.get("candidate_state") in ("superseded","rejected") and (
+        task_meta.get("merge_allowed") is True or task_meta.get("deploy_allowed") is True):
+        lifecycle_blocking.append("superseded_candidate_permissions")
+    if task_meta.get("review_status")=="fail" and (
+        task_meta.get("merge_allowed") is True or task_meta.get("deploy_allowed") is True):
+        lifecycle_blocking.append("failed_review_release_permissions")
+    if task_meta.get("task_contract_version") in ("2",2):
+        if task_meta.get("status")=="closed" and task_meta.get("review_status")!="pass":
+            lifecycle_blocking.append("closed_without_review_pass")
+        if task_meta.get("status") in ("accepted","accepted_pending_integration",
+                                      "integrated","integrated_pending_deploy","closed"):
+            if task_meta.get("candidate_state") in ("frozen","active") and not task_meta.get("candidate_commit"):
+                lifecycle_blocking.append("accepted_candidate_commit_missing")
+            if task_meta.get("candidate_state") in ("superseded","rejected"):
+                lifecycle_blocking.append("accepted_candidate_invalid")
+    if not isinstance(task_meta.get("task_id"),str):
+        lifecycle_blocking.append("task_id_missing_or_invalid")
     return response("context.check", project_id=p["id"], task_id=task_meta.get("task_id"),
         task_path=task_path, status=task_meta.get("status"), review_status=task_meta.get("review_status"),
         permissions={"merge_allowed": task_meta.get("merge_allowed"), "deploy_allowed": task_meta.get("deploy_allowed")},
-        git=snapshot, cautions=cautions, state=snapshot["state"],
+        git=snapshot,cautions=cautions, governance_blocking=lifecycle_blocking,
+        state="blocked" if lifecycle_blocking or snapshot["state"]!="ok" else "ok",
         active_pointer_source="registry.active_task" if direct_task else "existing_handoff",
         execution_context_changed=False)
 
@@ -192,6 +247,8 @@ def plan_list(root, project_id=None, plan=None):
     records = []
     for f in files[:500]:
         if f.is_symlink() or not f.is_file():
+            continue
+        if not visible(frontmatter(text_file(f)),p,"plan",p.get("_registry_project_count")):
             continue
         relative = str(f.relative_to(pr))
         if plan and plan not in (relative, f.name):
@@ -211,7 +268,8 @@ def plan_list(root, project_id=None, plan=None):
     if plan:
         from .plans import unpack
         all_plans = [(f,frontmatter(text_file(f))) for f in sorted(folder.rglob("*.md"))
-                     if f.is_file() and not f.is_symlink()]
+                     if f.is_file() and not f.is_symlink()
+                     and visible(frontmatter(text_file(f)),p,"plan",p.get("_registry_project_count"))]
         target_meta=frontmatter(text_file(pr/records[0]["path"]))
         target_id=target_meta.get("plan_id")
         depends_on=unpack(target_meta.get("depends_on"))
@@ -311,36 +369,53 @@ def doctor(root, project_id=None, script=None):
     except Exception as exc:
         from .common import GovernanceError
         if not isinstance(exc,GovernanceError): raise
-        checks["problems"] = {"status":"unavailable","reason":exc.code}
-    handoff_script = Path(p["_resolved_root"]) / "tools" / "handoff.py"
-    if (handoff_script.is_file() and not handoff_script.is_symlink()
-            and not p.get("active_task")
-            and p.get("handoff", "CURRENT_HANDOFF.md") == "CURRENT_HANDOFF.md"):
-        try:
-            handoff = subprocess.run([sys.executable, str(handoff_script), "status"],
-                cwd=p["_resolved_root"], text=True, capture_output=True,
-                timeout=20, check=False)
-            checks["existing_handoff"] = {"exit_code": handoff.returncode,
-                "output": handoff.stdout[:1500], "error": handoff.stderr[:300]}
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            checks["existing_handoff"] = {"error": str(exc)}
+        checks["problems"] = {"status":"unavailable","reason":exc.code,"blocking":True}
+    checks["existing_handoff"] = {
+        "status":"not_executed",
+        "reason":"Read-only doctor never executes project-provided scripts; run the authority guard separately",
+    }
     if script:
-        process = subprocess.run([sys.executable, str(script), "check", str(p["_resolved_root"]), "--format", "json"],
-                                 text=True, capture_output=True, timeout=30, check=False)
+        # Caller-provided checkers must not bypass the read-only contract.
+        trusted=(Path(__file__).resolve().parents[1]/"scripts"/"driftlock.py").resolve()
+        if Path(script).resolve()!=trusted:
+            fail("UNTRUSTED_CHECKER", "doctor may only invoke this Skill's own read-only checker")
         try:
-            payload = json.loads(process.stdout)
-            checks["documents"] = {"exit_code": process.returncode,
-                "results": [r for r in payload.get("results", []) if r.get("state") != "CURRENT"],
-                "blocking_errors": payload.get("blocking_errors", [])}
-        except ValueError:
-            checks["documents"] = {"exit_code": process.returncode, "error": process.stderr[:300]}
+            process = subprocess.run([sys.executable, str(script), "check", str(p["_resolved_root"]), "--format", "json"],
+                                     text=True, capture_output=True, timeout=30, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            checks["documents"]={"status":"unavailable","error":str(exc),"blocking":True}
+            process = None
+        if process is not None:
+            try:
+                payload = json.loads(process.stdout)
+                if not isinstance(payload,dict) or not isinstance(payload.get("blocking_errors"),list):
+                    raise ValueError("Invalid document-check schema")
+                if process.returncode not in (0,1) or payload["blocking_errors"]:
+                    checks["documents"]={"exit_code":process.returncode,"blocking":True,
+                                         "blocking_errors":payload["blocking_errors"]}
+                else:
+                    checks["documents"]={"exit_code":process.returncode,"blocking":False,
+                       "results":[r for r in payload.get("results",[]) if r.get("state")!="CURRENT"],
+                       "blocking_errors":[]}
+            except (ValueError,TypeError) as exc:
+                checks["documents"] = {"exit_code": process.returncode,"error":str(exc), "blocking":True}
     is_blocked = (
         checks["context"].get("state") == "blocked"
         or checks["tasks"].get("blocking") is True
         or bool(checks["planning"].get("issues"))
-        or checks.get("existing_handoff", {}).get("exit_code") in (2, 3)
-        or checks.get("documents", {}).get("exit_code") in (2, 3)
+        or checks.get("documents", {}).get("blocking") is True
+        or checks.get("problems", {}).get("blocking") is True
+        or checks["context"].get("state") == "unavailable"
+    )
+    attention=(
+        any(x.get("state") in ("STALE","UNVERIFIED","REVIEW_REQUIRED") for x in
+            checks.get("documents",{}).get("results",[]))
+        or checks["context"].get("state")=="unconfigured"
+        or bool(checks["tasks"].get("review_warnings"))
+        or checks["planning"].get("legacy_unknown",0)>0
+        or (checks["existing_handoff"].get("status")=="not_executed" and
+            (Path(p["_resolved_root"])/"tools"/"handoff.py").is_file())
     )
     return response("doctor", project_id=p["id"], checks=checks,
-        state="blocked" if is_blocked else "ok", read_only=True,
+        state="blocked" if is_blocked else "review_required" if attention else "ok", read_only=True,
         scope="Diagnostic reports do not replace existing Company Control handoff authority")

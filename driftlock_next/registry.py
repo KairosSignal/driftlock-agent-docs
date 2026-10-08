@@ -92,6 +92,7 @@ def select(root, project_id=None):
     if not matches or (project_id is None and len(matches) > 1):
         fail("PROJECT_SELECTION_REQUIRED", "Specify --project; available: " + ", ".join(p["id"] for p in config["projects"]))
     project = dict(matches[0])
+    project["_registry_project_count"] = len(config["projects"])
     if "_resolved_root" not in project:
         project["_resolved_root"] = str((Path(root).resolve() / project["root"]).resolve())
     return project

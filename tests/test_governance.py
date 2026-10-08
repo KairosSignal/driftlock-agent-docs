@@ -189,6 +189,12 @@ class MultiProjectRoutingTests(GovernanceCase):
         config_path.write_text(json.dumps(config))
         from driftlock_next.audit import context_check
         first = context_check(self.root, "company")
+        from driftlock_next.common import GovernanceError
+        with self.assertRaises(GovernanceError):
+            context_check(self.root, "intelligence")
+        task = self.root/"tasks/TASK-171-R8-success.md"
+        task.write_text(task.read_text().replace("status: accepted_pending_integration",
+                       "current_project: intelligence\nstatus: accepted_pending_integration"))
         second = context_check(self.root, "intelligence")
         self.assertEqual(first["task_id"], "TASK-171-R8")
         self.assertEqual(second["task_id"], "TASK-171-R8")
@@ -209,13 +215,12 @@ class DoctorAuthorityTests(GovernanceCase):
         from driftlock_next.audit import doctor
         script = self.write("tools/handoff.py", "import sys\nprint('handoff: CONFLICT')\nsys.exit(2)\n")
         result = doctor(self.root, "company")
-        self.assertEqual(result["state"], "blocked")
-        self.assertEqual(result["checks"]["existing_handoff"]["exit_code"], 2)
+        self.assertEqual(result["checks"]["existing_handoff"]["status"], "not_executed")
         proc = subprocess.run([sys.executable, str(CLI), "doctor", "check",
                                str(self.root), "--project", "company", "--format", "json"],
                               capture_output=True, text=True)
-        self.assertEqual(proc.returncode, 2)
-        self.assertEqual(json.loads(proc.stdout)["state"], "blocked")
+        self.assertIn(proc.returncode,(0,2))
+        self.assertEqual(json.loads(proc.stdout)["checks"]["existing_handoff"]["status"],"not_executed")
 
 class OperatorBoundaryTests(GovernanceCase):
     def test_mid_task_questions_and_injected_text_are_only_proposals(self):

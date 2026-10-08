@@ -1,5 +1,21 @@
 # Driftlock Changelog
 
+## 0.4.1 — independent review R1 repair candidate (2026-10-08)
+
+R1 reviewed a7671f4 (Driftlock) and e78a770 (Company Control): FAIL.
+This local R1 repair addresses ten HIGH and three MEDIUM findings with
+adversarial tests. Independent R2 is required before any release action.
+
+- Exact, committed structured review acceptance tied to TASK and candidate.
+- Fail-closed project identity, Git, TASK, rework and lifecycle validation.
+- No arbitrary project code execution inside read-only doctor.
+- Preserve Problem Register task/Gate associations.
+- Read all worktrees and local branch TASK IDs before local allocation.
+- Safe symlink parents and portable filesystem locks.
+- Validate PLAN successor graph before authorized writing.
+- Full install runtime manifest comparison and legacy identifier tolerance.
+- Company Control alias fix and five newly managed Driftlock document nodes.
+
 ## 0.4.0 — integrated governance candidate (2026-10-08)
 
 - The current AI handles interpretation; no secondary model API or model

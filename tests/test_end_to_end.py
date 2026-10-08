@@ -43,10 +43,10 @@ class EndToEnd(unittest.TestCase):
             "| PROBLEM-001 | confirmed | Price chart shows a wrong axis | no task | verify behavior |\n"
             "| PROBLEM-002 | in_task | Sidebar loses selection after navigation | TASK-200 | smoke evidence pending |\n")
         write("current/PROBLEM_REGISTER.md",self.problem_text)
-        write("tasks/task-200.md","---\ntask_id: TASK-200\nstatus: closed\nreview_status: pass\n---\n")
+        write("tasks/task-200.md","---\ntask_id: TASK-200\nstatus: closed\nreview_status: pass\ncandidate_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n---\n")
         write("tasks/task-201.md","---\ntask_id: TASK-201\nstatus: in_progress\nreview_status: pending\n---\n")
         write("report/accepted-smoke.md",
-              "# Independent review: TASK-200\n\nVerdict: PASS - accepted and verified\n")
+               "---\ntask_id: TASK-200\nverdict: PASS\nreview_status: accepted\ncandidate_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n---\n# Independent review: TASK-200\n")
 
         write("planning/alpha.md","---\nplan_id: PLAN-A01\nstatus: draft\nproject_id: company\n---\n# Alpha\n")
         write("planning/beta.md","---\nplan_id: PLAN-B01\nstatus: draft\ndepends_on: [\"PLAN-A01\"]\nproject_id: company\n---\n# Beta\n")
@@ -100,7 +100,7 @@ class EndToEnd(unittest.TestCase):
         with self.assertRaises(GovernanceError) as ctx:
             problem_transition(self.root,"company","PROBLEM-002","resolved",
                 sha(file.read_text()), task_id="TASK-200",evidence="report/unrelated.md",approved=True)
-        self.assertEqual(ctx.exception.code,"RESOLUTION_TASK_MISMATCH")
+        self.assertEqual(ctx.exception.code,"UNTRACKED_EVIDENCE")
         self.assertIn("in_task",file.read_text())
 
     def test_problem_reconcile_is_read_only_and_finds_pending_close(self):

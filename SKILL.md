@@ -22,6 +22,21 @@ create a competing documentation source of truth.
 If no valid L0 exists, treat the project as unmanaged. Run `discover`; do not
 guess which status file is authoritative.
 
+## R1 lifecycle and evidence hardening
+
+Do not close a problem from a plausible filename or a positive word.
+The report must be a committed, unchanged structured Review record with
+exact task_id and candidate_commit, verdict PASS, review_status accepted.
+The TASK itself must be closed with Review PASS. Preserve old Gate/task
+association text on every problem-board update.
+
+The read-only doctor command does not execute arbitrary project checkers.
+Run authoritative legacy handoff guards separately; report freshness
+STALE/UNVERIFIED as review_required rather than passing silently.
+Project-wide governance can read cross-project but cannot edit a different
+project's formal PLAN. New TASK IDs are locally serialized across all
+worktrees and branch records, not across independent clones.
+
 ## Reuse the current AI; do not add model configuration
 
 The current assistant/executor interprets new messages directly; Driftlock

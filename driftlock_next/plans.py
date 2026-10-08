@@ -6,6 +6,7 @@ from pathlib import Path
 from .atomic import change
 from .common import fail, frontmatter, response, text_file, within
 from .registry import select
+from .ownership import visible, require_owner
 
 STATES = {"draft","under_review","approved","active_planning","implemented","parked","superseded","rejected"}
 NEXT = {
@@ -21,7 +22,11 @@ NEXT = {
 IDENT = re.compile(r"^[A-Z][A-Z0-9_-]{2,79}$")
 
 def unpack(value):
-    if not value or value in ("[]","null"):
+    if value is None or value == "":
+        return []
+    if not isinstance(value,str):
+        fail("INVALID_PLAN_LINKS", "Plan links must be text or a JSON string array")
+    if value in ("[]","null"):
         return []
     if value.startswith("["):
         try:
@@ -39,11 +44,15 @@ def plan_entries(p):
     if not folder.exists():
         return []
     return [(f,frontmatter(text_file(f))) for f in sorted(folder.rglob("*.md"))
-            if f.is_file() and not f.is_symlink()]
+            if f.is_file() and not f.is_symlink()
+            and visible(frontmatter(text_file(f)),p,"plan",p.get("_registry_project_count"))]
 
-def validate(root, project=None):
+def validate(root, project=None, proposed=None):
     p = select(root,project)
     entries = plan_entries(p)
+    if proposed:
+        entries=[(f, dict(proposed) if str(f)==proposed["_path"] else meta)
+                 for f,meta in entries]
     named, legacy, problems = {}, [], []
     for f,meta in entries:
         ident = meta.get("plan_id")
@@ -98,6 +107,11 @@ def transition(root, project, plan_id, status, expected_sha, evidence, approve):
     if len(matches)!=1:
         fail("PLAN_ID_AMBIGUOUS",f"Expected one authoritative Plan {plan_id}; found {len(matches)}")
     path,meta=matches[0]
+    require_owner(meta,p,"plan")
+    # Company-wide read access is not cross-project write permission.
+    from .ownership import owner
+    if p["id"]=="governance" and owner(meta,"plan") not in (None,"governance"):
+        fail("PROJECT_OWNER_MISMATCH","Use the owning project for PLAN transition")
     prior=meta.get("status")
     if prior not in STATES:
         fail("LEGACY_PLAN", "Legacy plan has no governed status; migrate explicitly")
@@ -127,6 +141,17 @@ def transition(root, project, plan_id, status, expected_sha, evidence, approve):
         else:
             updated_head+="\n"+evidence_line
     replacement=content[:4]+updated_head+content[boundary:]
+    proposed_meta=frontmatter(replacement)
+    proposed_meta["_path"]=str(path)
+    baseline=validate(root,project)
+    preview=validate(root,project,proposed_meta)
+    # Legacy pre-existing violations are not silently rewritten, but a write
+    # may never introduce a new violation in its own scope/graph.
+    before={json.dumps(issue,sort_keys=True,default=str) for issue in baseline["issues"]}
+    new_issues=[issue for issue in preview["issues"]
+                if json.dumps(issue,sort_keys=True,default=str) not in before]
+    if new_issues:
+        fail("PLAN_GRAPH_INVALID_AFTER_TRANSITION", f"Proposed update violates Plan graph: {new_issues}")
     relative=str(path.relative_to(p["_resolved_root"]))
     result=change(p["_resolved_root"],relative,expected_sha,replacement,approve=approve)
     return response("plan.transition",project_id=p["id"],plan_id=plan_id,

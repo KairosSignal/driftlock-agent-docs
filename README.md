@@ -67,7 +67,36 @@ See `references/problem-register-and-feedback.md` for the recommended states,
 minimum fields, task boundary, deduplication rules, and a Driftlock index
 example.
 
-## Driftlock Unified 0.4.0 — local integration candidate
+## Driftlock Unified 0.4.1 — independent-review R1 repair candidate
+
+The predecessor v0.4.0 candidate failed independent Review with ten HIGH and
+three MEDIUM findings. This local R1 repair hardens the existing code:
+
+- Problem closure requires a tracked, committed, unchanged structured PASS
+  report with exact TASK and candidate SHA plus matching accepted review state.
+  A positive word in failed or unrelated prose is never sufficient.
+- Problem updates preserve existing Gate and multi-TASK context.
+- Scoped project reads/writes enforce record ownership and normalized aliases.
+  Company-wide overview permissions cannot edit another project's formal PLAN.
+- TASK Review, release permissions, candidate state and Git are checked
+  independently. Legacy identifiers are preserved and reported as such.
+- Read-only doctor never automatically executes project-provided scripts.
+  Run the authoritative Company Control handoff separately. Stale documents
+  produce review_required rather than silently reporting all current.
+- The prefix allocator scans local registered worktrees plus committed TASK
+  records in local branches; the Git-common-dir ledger is still only a local
+  guarantee. Task reservations do not authorize construction.
+- Portable locking removes unconditional fcntl imports. POSIX ledger parents
+  reject symlinks. Actual Windows smoke remains required before release.
+- PLAN transitions validate the resulting graph before any authorized write.
+- Skill install comparison uses the complete runtime/contract manifest.
+- Company Control uses independent project pointers, corrected aliases and
+  five additional Driftlock-managed planning/intake documents.
+
+This remains an uninstalled, unpublished candidate, awaiting independent R2
+Review. There is no additional model API invocation or deployment.
+
+## Previous 0.4.0 Candidate (failed R1)
 
 This candidate reuses the current AI for natural-language interpretation.
 No separate AI model, API key, prompt-router configuration or unattended agent

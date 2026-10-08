@@ -1,12 +1,12 @@
 """Non-interrupting conversation intake: proposal by default; bounded opt-in write."""
 from __future__ import annotations
-import fcntl
 import os
 import re
 import tempfile
 from pathlib import Path
 from .common import fail, sha, within, response, text_file
 from .registry import select
+from .locks import exclusive
 
 def propose(root, project, text, kind=None):
     if not text or not text.strip() or len(text) > 4000:
@@ -61,8 +61,7 @@ def record(root, project, kind, text, record_id, expected_sha, source, approved)
     guard = target.with_name("." + target.name + ".driftlock-write.lock")
     if guard.is_symlink():
         fail("UNSAFE_LOCK_PATH", "Refuse symlink lock path")
-    with open(guard, "a+b") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
+    with exclusive(guard):
         original = text_file(target) if target.exists() else ""
         current_hash = sha(original)
         payload_hash = sha(kind + "\x00" + text.strip() + "\x00" + source)
