@@ -45,6 +45,9 @@ class EndToEnd(unittest.TestCase):
         write("current/PROBLEM_REGISTER.md",self.problem_text)
         write("tasks/task-200.md","---\ntask_id: TASK-200\nstatus: closed\nreview_status: pass\n---\n")
         write("tasks/task-201.md","---\ntask_id: TASK-201\nstatus: in_progress\nreview_status: pending\n---\n")
+        write("report/accepted-smoke.md",
+              "# Independent review: TASK-200\n\nVerdict: PASS - accepted and verified\n")
+
         write("planning/alpha.md","---\nplan_id: PLAN-A01\nstatus: draft\nproject_id: company\n---\n# Alpha\n")
         write("planning/beta.md","---\nplan_id: PLAN-B01\nstatus: draft\ndepends_on: [\"PLAN-A01\"]\nproject_id: company\n---\n# Beta\n")
         self.git("add",".")
@@ -76,7 +79,7 @@ class EndToEnd(unittest.TestCase):
         with self.assertRaises(GovernanceError) as bad:
             problem_transition(self.root,"company","PROBLEM-002","resolved",sha(file.read_text()),
                                task_id="TASK-200",approved=True)
-        self.assertEqual(bad.exception.code,"OUTCOME_EVIDENCE_REQUIRED")
+        self.assertEqual(bad.exception.code,"RESOLUTION_EVIDENCE_REQUIRED")
         before=file.read_text()
         with self.assertRaises(GovernanceError):
             problem_transition(self.root,"company","PROBLEM-002","resolved","wronghash",
@@ -87,6 +90,19 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(result["current"],"resolved")
         self.assertIn("Evidence: report/accepted-smoke.md",file.read_text())
         self.assertEqual(file.read_text().count("PROBLEM-002"),1)
+    def test_no_fake_report_or_unrelated_task_can_resolve_problem(self):
+        file=self.root/"current/PROBLEM_REGISTER.md"
+        with self.assertRaises(GovernanceError) as ctx:
+            problem_transition(self.root,"company","PROBLEM-002","resolved",
+                sha(file.read_text()), task_id="TASK-200",evidence="report/nonexistent.md",approved=True)
+        self.assertEqual(ctx.exception.code,"MISSING_PATH")
+        self.write("report/unrelated.md","# Review\nVerdict: PASS, unrelated report for TASK-201\n")
+        with self.assertRaises(GovernanceError) as ctx:
+            problem_transition(self.root,"company","PROBLEM-002","resolved",
+                sha(file.read_text()), task_id="TASK-200",evidence="report/unrelated.md",approved=True)
+        self.assertEqual(ctx.exception.code,"RESOLUTION_TASK_MISMATCH")
+        self.assertIn("in_task",file.read_text())
+
     def test_problem_reconcile_is_read_only_and_finds_pending_close(self):
         original=self.git("status","--porcelain")
         data=reconcile(self.root,"company")
@@ -124,9 +140,9 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(found["state"],"blocked")
         self.assertIn("PLAN_CYCLE",[e["code"] for e in found["issues"]])
     def test_allocator_serial_reservation_and_task_independent(self):
-        reserve_path=self.root/".driftlock/task-id-reservations.json"
         a=reserve(self.root,"company",sha(""),True)
         self.assertEqual(a["task_id"],"GOV-TASK-00001")
+        reserve_path=Path(a["record_path"])
         self.assertFalse(a["task_created"])
         with self.assertRaises(GovernanceError) as bad:
             reserve(self.root,"company",sha(""),True)
@@ -221,3 +237,34 @@ class RealFormatAdoption(EndToEnd):
         plan_transition(self.root,"company","PLAN-A01","active_planning",sha(f.read_text()),
                         "decision/active.md",True)
         self.assertEqual(f.read_text().count("last_decision_evidence:"),1)
+
+class WorktreeLedgerTests(EndToEnd):
+    def test_worktrees_share_one_id_reservation_ledger(self):
+        from driftlock_next.allocator import reservation_file, inspect
+        sibling=Path(self.temp.name)/"second-worktree"
+        self.git("worktree","add","-qb","work/second",str(sibling))
+        self.assertEqual(reservation_file(self.root), reservation_file(sibling))
+        first=reserve(self.root,"company",sha(""),True)
+        state=inspect(sibling)
+        self.assertEqual(state["sha256"],first["sha256"])
+        self.assertEqual(state["count"],1)
+        second=reserve(sibling,"company",state["sha256"],True)
+        self.assertNotEqual(first["task_id"],second["task_id"])
+        self.assertEqual(second["task_id"],"GOV-TASK-00002")
+        self.assertEqual(inspect(self.root)["count"],2)
+    def test_missing_registry_defaults_to_remote_tracked_not_local_only(self):
+        cfg=self.root/".driftlock/projects.json"
+        cfg.unlink()
+        fallback=load(self.root)
+        self.assertEqual(fallback["projects"][0]["remote_policy"],"remote_tracked")
+    def test_no_unapproved_capture_or_triage_side_effects(self):
+        from driftlock_next.triage import triage
+        before=self.git("status","--porcelain")
+        data=triage(self.root,"company","这个价格曲线看着不对",None)
+        self.assertEqual(data["suggested_kind"],"needs_clarification")
+        self.assertEqual(data["current_execution"]["state"],"unconfigured")
+        self.assertFalse(data["persisted"])
+        self.assertFalse(data["execution_context_changed"])
+        # Chinese observation is not spuriously matched to an English defect.
+        self.assertEqual(data["possible_related_problems"],[])
+        self.assertEqual(self.git("status","--porcelain"),before)

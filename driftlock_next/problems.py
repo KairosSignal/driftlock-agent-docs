@@ -109,6 +109,21 @@ def task_metadata(project, task_id):
             return meta, path
     fail("TASK_NOT_FOUND", f"Cannot reference missing authoritative task {task_id}")
 
+def _verify_resolution_claim(root, linked_task_id, evidence):
+    """A user-supplied path alone is not proof of a successful Review."""
+    if not evidence or not isinstance(evidence,str):
+        fail("RESOLUTION_EVIDENCE_REQUIRED","A real review/report path is required")
+    path = within(root, evidence, allow_missing=False)
+    if not path.is_file() or path.suffix.lower() not in (".md",".txt",".json"):
+        fail("RESOLUTION_EVIDENCE_FORMAT","Evidence must refer to a checked-in readable report")
+    content = text_file(path)
+    if linked_task_id not in content:
+        fail("RESOLUTION_TASK_MISMATCH","Evidence file does not mention the linked TASK")
+    if not re.search(r"(?i)\b(pass|accepted|verified|closed)\b",content):
+        fail("RESOLUTION_NOT_VERIFIED","Report lacks an explicit positive review/verification statement")
+    return str(path)
+
+
 def transition(root, project, problem_id, next_state, expected_sha,
                task_id=None, evidence=None, approved=False):
     if not ID.fullmatch(problem_id):
@@ -128,9 +143,19 @@ def transition(root, project, problem_id, next_state, expected_sha,
     if next_state == "in_task" and not task_id and not row["task"].strip(chr(96)+" "):
         fail("TASK_ID_REQUIRED", "Existing authoritative task ID needed")
     if task_id:
+        # Do not silently substitute an unrelated accepted TASK for the TASK
+        # which actually owns the user-reported defect.
+        prior_links = re.findall(
+            r"(?<![A-Za-z0-9-])(?:[A-Z]{2,5}-)?TASK-\d+(?:-[A-Z])?(?:-R\d+)?",
+            row["task"],
+        )
+        if row["status"] == "in_task" and prior_links and task_id not in prior_links:
+            fail("PROBLEM_TASK_MISMATCH","Linked TASK does not match the existing problem owner")
         meta, _ = task_metadata(p, task_id)
-        if next_state == "resolved" and meta.get("status") != "closed":
-            fail("TASK_NOT_CLOSED", "Closed task needed before resolution")
+        if next_state == "resolved":
+            if meta.get("status") != "closed":
+                fail("TASK_NOT_CLOSED", "Closed task needed before resolution")
+            _verify_resolution_claim(p["_resolved_root"], task_id, evidence)
     if next_state in END_STATES and (not evidence or len(evidence.strip()) < 8):
         fail("OUTCOME_EVIDENCE_REQUIRED", "Terminal state requires evidence reference")
     if next_state == "resolved" and not task_id:

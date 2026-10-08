@@ -22,6 +22,19 @@ create a competing documentation source of truth.
 If no valid L0 exists, treat the project as unmanaged. Run `discover`; do not
 guess which status file is authoritative.
 
+## Reuse the current AI; do not add model configuration
+
+The current assistant/executor interprets new messages directly; Driftlock
+does not invoke a second Luna/Sol model, require API keys or configure model
+budgets. This only proposes semantic meaning: scripts enforce project identity,
+Git consistency, revision guards and task lifecycle. Read
+references/ai-operator-contract.md before handling conversational feedback.
+
+Call intake triage for the current project when user feedback may belong to
+a Problem, Idea, Research item or existing Plan. It returns source context
+without changing TASK, creating records or claiming semantic certainty.
+The operator must not pass --approve based on inferred user intent.
+
 ## Conversation, task and project boundary
 
 New discussion topics, questions, feature ideas or bug reports never silently
@@ -52,11 +65,13 @@ python3 <skill-root>/scripts/driftlock.py task check <project-root> --project go
 python3 <skill-root>/scripts/driftlock.py plan list <project-root> --project governance
 python3 <skill-root>/scripts/driftlock.py git audit <project-root> --project governance
 python3 <skill-root>/scripts/driftlock.py doctor check <project-root> --project governance
+python3 <skill-root>/scripts/driftlock.py intake triage <project-root> --project governance --text "user report"
 python3 <skill-root>/scripts/driftlock.py problem list <project-root> --project governance
 python3 <skill-root>/scripts/driftlock.py problem candidates <project-root> --project governance --text "observed issue"
 python3 <skill-root>/scripts/driftlock.py problem reconcile <project-root> --project governance
 python3 <skill-root>/scripts/driftlock.py plan validate <project-root> --project governance
 python3 <skill-root>/scripts/driftlock.py skill status <project-root> --installed /root/.codex/skills/driftlock
+python3 <skill-root>/scripts/driftlock.py task reservations <project-root> --project governance
 ```
 
 Use `--format json` for agents and automation.

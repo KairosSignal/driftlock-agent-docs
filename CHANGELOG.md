@@ -2,6 +2,15 @@
 
 ## 0.4.0 — integrated governance candidate (2026-10-08)
 
+- The current AI handles interpretation; no secondary model API or model
+  configuration.
+- Added read-only grounded conversation triage without task switching.
+- Git upstream policies now fail closed when not explicitly configured.
+- Closing a problem checks a real linked review report rather than accepting
+  a made-up evidence-path string; semantic truth still requires human judgment.
+- Local task reservations now share a Git-common-dir ledger across worktrees.
+
+
 - Existing markdown Problem Register adapter: read/candidates/capture/authorized
   transition/reconcile existing TASKs without duplicated problem storage.
 - Governed PLAN validation including dependency graph cycles, supersedes,

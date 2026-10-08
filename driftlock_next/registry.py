@@ -23,7 +23,7 @@ def load(root):
                 "tasks": "tasks",
                 "planning": "planning",
                 "handoff": "CURRENT_HANDOFF.md",
-                "remote_policy": "local_only",
+                "remote_policy": "remote_tracked",
                 "intake": {},
             }],
         }
@@ -64,7 +64,8 @@ def load(root):
                 fail("REGISTRY_PATH", f"Invalid {field}")
             within(project_root, rel, allow_missing=True)
             project.setdefault(field, default)
-        policy = project.get("remote_policy", "local_only")
+        # Fail closed: an unspecified policy must not silently waive upstream gates.
+        policy = project.get("remote_policy", "remote_tracked")
         if policy not in ("local_only", "remote_tracked", "remote_publish_required"):
             fail("REMOTE_POLICY", f"Invalid remote policy: {policy}")
         project.setdefault("remote_policy", policy)

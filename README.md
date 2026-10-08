@@ -69,6 +69,17 @@ example.
 
 ## Driftlock Unified 0.4.0 — local integration candidate
 
+This candidate reuses the current AI for natural-language interpretation.
+No separate AI model, API key, prompt-router configuration or unattended agent
+is involved. See references/ai-operator-contract.md for correct behavior when
+a user interrupts construction with a question, new idea or feedback.
+
+Task-ID reservations are synchronized across worktrees sharing one Git common
+directory. This is a local-host guarantee, NOT distributed global uniqueness.
+Independent clones must reconcile with their authoritative Company Control
+before assigning an actual construction TASK. Reservation metadata is stored
+in Git's shared metadata and needs an independent backup.
+
 Adds end-to-end governance operations for company-scale local-only engineering,
 without replacing existing Company Control TASK and Problem Register authority.
 

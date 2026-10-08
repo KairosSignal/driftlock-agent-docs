@@ -7,8 +7,9 @@ from .intake import propose, record
 from .audit import context_check, task_check, plan_list, git_audit, doctor
 from .problems import scan as problem_scan, transition as problem_transition, reconcile as problem_reconcile
 from .plans import validate as plan_validate, transition as plan_transition
-from .allocator import reserve as task_reserve
+from .allocator import reserve as task_reserve, inspect as task_reservations
 from .skill_install import status as skill_status
+from .triage import triage as intake_triage
 
 def configure(subs):
     def group(name, actions):
@@ -55,8 +56,8 @@ def configure(subs):
                     cmd.add_argument("--approve", action="store_true")
     for key, actions in (("project", ("list","status")),
                          ("context", ("show","check")),
-                         ("intake", ("propose","record")),
-                         ("task", ("check","reserve")),
+                         ("intake", ("propose","triage","record")),
+                         ("task", ("check","reservations","reserve")),
                          ("plan", ("list","trace","validate","transition")),
                          ("problem", ("list","candidates","reconcile","transition")),
                          ("git", ("audit",)),
@@ -75,12 +76,18 @@ def run(args, base_script):
     elif args.command == "intake":
         if args.action == "propose":
             data = propose(root, p, args.text, args.kind)
+        elif args.action == "triage":
+            data = intake_triage(root, p, args.text, args.kind)
         else:
             data = record(root, p, args.kind, args.text, args.id, args.expected_sha,
                           args.source, args.approve)
     elif args.command == "task":
-        data = task_check(root, p, args.id) if args.action == "check" else task_reserve(
-            root, p, args.expected_sha, approve=args.approve)
+        if args.action == "check":
+            data = task_check(root, p, args.id)
+        elif args.action == "reservations":
+            data = task_reservations(root)
+        else:
+            data = task_reserve(root, p, args.expected_sha, approve=args.approve)
     elif args.command == "plan":
         if args.action == "validate":
             data = plan_validate(root, p)

@@ -6,10 +6,45 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from .common import fail, sha, text_file, response
+from .common import fail, sha, text_file, response, git
 from .registry import select
 from .audit import tasks_for
 from .common import frontmatter
+
+def reservation_file(root):
+    """Worktrees in the same repository share one allocation ledger."""
+    base=Path(root).resolve()
+    result=git(base,"rev-parse","--git-common-dir",check=False)
+    if result.returncode:
+        fail("ALLOCATOR_NOT_GIT","A Company Control Git checkout is required")
+    common=Path(result.stdout.strip())
+    if not common.is_absolute():
+        common=(base/common).resolve()
+    else:
+        common=common.resolve()
+    if not common.is_dir():
+        fail("ALLOCATOR_GIT_DIR","Cannot locate shared Git metadata")
+    return common/"driftlock-governance"/"task-id-reservations.json"
+
+def inspect(root):
+    path=reservation_file(root)
+    if path.is_symlink():
+        fail("UNSAFE_ALLOCATOR","Symlinked allocation ledger")
+    body=text_file(path) if path.exists() else ""
+    if body:
+        try:
+            state=json.loads(body)
+        except ValueError:
+            fail("ALLOCATOR_CORRUPTED","Invalid JSON in allocation ledger")
+        if not isinstance(state,dict) or not isinstance(state.get("reservations"),list):
+            fail("ALLOCATOR_CORRUPTED","Malformed allocation ledger")
+    else:
+        state={"schema_version":1,"reservations":[]}
+    return response("task.reservations",path=str(path),sha256=sha(body),
+                    count=len(state["reservations"]),reservations=state["reservations"][-25:],
+                    scope="shared_git_worktrees_on_this_host",
+                    warning="This ledger is local Git metadata; back it up independently. Separate clones cannot coordinate offline.")
+
 
 def reserve(root, project_id, expected_sha, approve=False):
     p=select(root,project_id)
@@ -21,8 +56,7 @@ def reserve(root, project_id, expected_sha, approve=False):
         fail("TASK_PREFIX_MISSING","Project has no reserved prefix")
     if not approve:
         fail("APPROVAL_REQUIRED","Reservation needs explicit approval")
-    base=Path(root).resolve()
-    path=base/".driftlock"/"task-id-reservations.json"
+    path=reservation_file(root)
     if path.exists() and path.is_symlink():
         fail("UNSAFE_ALLOCATOR", "Symlinked allocator state")
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -57,4 +91,4 @@ def reserve(root, project_id, expected_sha, approve=False):
         return response("task.reserve",project_id=p["id"],task_id=task_id,
             record_path=str(path),sha256=sha(content),state="reserved_not_authorized",
             task_created=False,execution_authorized=False,
-            caveat="Only serialized for one shared filesystem; never merge offline allocations without reconciliation")
+            caveat="Shared across worktrees of this local repository only; separate clones need central reconciliation. Back up the Git metadata ledger.")
