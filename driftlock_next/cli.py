@@ -21,6 +21,25 @@ def configure(subs):
             cmd.add_argument("--project", default=None)
             cmd.add_argument("--format", choices=("json", "text"), default="text")
             if name == "portfolio":
+                if action=="harvest":
+                    cmd.add_argument("--limit",type=int,default=50)
+                    cmd.add_argument("--task",default=None)
+                if action=="preflight":
+                    cmd.add_argument("--task",default=None)
+                    cmd.add_argument("--query",default=None)
+                if action in ("learn","promote","accept-scope"):
+                    fields={
+                        "learn":("cause","task","lesson","prevention","source","source-sha","expected-sha"),
+                        "promote":("cause","level","evidence","expected-sha"),
+                        "accept-scope":("id","evidence","expected-sha"),
+                    }[action]
+                    for field in fields:cmd.add_argument("--"+field,required=True)
+                    cmd.add_argument("--approve",action="store_true")
+                    if action=="learn":
+                        cmd.add_argument("--start",type=int,required=True)
+                        cmd.add_argument("--end",type=int,required=True)
+                        cmd.add_argument("--tags",default=None)
+                    if action=="promote":cmd.add_argument("--check",default=None)
                 if action in ("lessons","advise"):
                     cmd.add_argument("--query", required=action=="advise", default=None)
                 if action == "link":
@@ -74,7 +93,7 @@ def configure(subs):
                          ("git", ("audit",)),
                          ("doctor", ("check",)),
                          ("skill", ("status",)),
-                         ("portfolio", ("overview","backlog","dependencies","lessons","resources","record-lesson","link","advise"))):
+                         ("portfolio", ("overview","backlog","dependencies","lessons","resources","record-lesson","link","advise","graph","sync","accept-scope","learn","harvest","promote","preflight","recommendations"))):
         group(key, actions)
 
 def run(args, base_script):
@@ -85,6 +104,25 @@ def run(args, base_script):
     elif args.command == "context":
         data = context_check(root, p)
         data["command"] = f"context.{args.action}"
+        # Task-entry recall is additive; no alternate release decision or task switch.
+        if args.action=="check" and data.get("task_id"):
+            from .knowledge import preflight
+            try:
+                entry=preflight(root,p,data["task_id"])
+                data["engineering_memory"]={k:v for k,v in entry.items() if k not in ("warnings","schema_version","command")}
+                if data.get("status") in ("closed","rework_required","deployed_pending_close","deployed") or data.get("review_status")=="fail":
+                    from .knowledge import harvest
+                    try:
+                        capture=harvest(root,entry["project_id"],3,data["task_id"])
+                        data["engineering_memory"]["new_evidence_candidates"]=capture["candidates"]
+                    except GovernanceError as exc:
+                        data["engineering_memory"]["capture_warning"]=exc.code
+                if entry.get("state")=="blocked":
+                    data["state"]="blocked"
+                    data.setdefault("governance_blocking",[]).append("approved_lesson_check_failed")
+            except GovernanceError as exc:
+                data["engineering_memory"]={"state":"review_required","code":exc.code,"reason":str(exc)}
+
     elif args.command == "intake":
         if args.action == "propose":
             data = propose(root, p, args.text, args.kind)
@@ -125,7 +163,25 @@ def run(args, base_script):
         data = doctor(root, p, base_script)
     elif args.command == "portfolio":
         from . import portfolio
-        if args.action == "link":
+        if args.action in ("graph","sync"):
+            from . import relations
+            data=getattr(relations,args.action)(root,p)
+        elif args.action=="accept-scope":
+            from .relations import accept_scope
+            data=accept_scope(root,p,args.id,args.evidence,args.expected_sha,args.approve)
+        elif args.action in ("learn","promote","harvest","preflight","recommendations"):
+            from . import knowledge
+            if args.action=="learn":
+                data=knowledge.learn(root,p,args.cause,args.task,args.lesson,args.prevention,args.source,args.start,args.end,args.source_sha,args.expected_sha,args.approve,args.tags)
+            elif args.action=="promote":
+                data=knowledge.promote(root,p,args.cause,args.level,args.evidence,args.expected_sha,args.approve,args.check)
+            elif args.action=="harvest":
+                data=knowledge.harvest(root,p,args.limit,args.task)
+            elif args.action=="preflight":
+                data=knowledge.preflight(root,p,args.task,args.query)
+            else:
+                data=knowledge.recommendations(root,p)
+        elif args.action == "link":
             data = portfolio.link_record(root,p,args.id,args.target,args.expected_sha,args.approve)
         elif args.action == "record-lesson":
             data = portfolio.record_lesson(root,p,args.id,args.cause,args.task_ids,args.lesson,args.prevention,args.evidence,args.expected_sha,args.approve)

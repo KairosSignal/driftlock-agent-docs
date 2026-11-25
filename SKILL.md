@@ -132,7 +132,7 @@ evidence reference, prevention and verification gap; do not infer that every
 Rn is a repetition of the same root cause. Use portfolio record-lesson only
 after explicit authorization to persist, with exact existing task ownership
 and an approved CAS write. The resulting captured lesson is not automatically
-verified. During handoff, use portfolio backlog/dependencies/overview as
+verified. Use portfolio learn for canonical cause-linked observations; harvest returns exact-source candidates, not established facts. Use portfolio graph/sync for automatic typed links and derived progress, and portfolio preflight for bounded relevant lessons. The candidate context check integrates preflight and targeted harvest. Promotion to L2/L3/L4 needs explicit evidence and approval. During handoff, use portfolio backlog/dependencies/overview as
 derived advisory views, never as a substitute for the existing exact
 candidate/review/release gates. See references/portfolio-governance-preview.md.
 
