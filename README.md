@@ -67,6 +67,18 @@ See `references/problem-register-and-feedback.md` for the recommended states,
 minimum fields, task boundary, deduplication rules, and a Driftlock index
 example.
 
+## Driftlock 0.5.0 — evidence-linked portfolio governance
+
+The optional portfolio CLI adds derived project and backlog views, typed
+relationships, task dependency analysis, evidence-linked lessons, targeted
+recall, and approved rule promotion. It reuses existing project records and
+review gates rather than adding a database or background service.
+
+See [portfolio governance](references/portfolio-governance-preview.md) for
+commands, requirements and limitations.
+
+## Historical development notes
+
 ## Driftlock Unified 0.4.5 — R5 explicit acceptance-attestation protocol
 
 R5 independently reviewed v0.4.4 (69e5ef4) and reported FAIL:
@@ -476,5 +488,5 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 ## License
 
 MIT
-### Isolated portfolio-governance preview
-See [portfolio governance preview](references/portfolio-governance-preview.md) for the new optional CLI and strict evidence boundaries. The accepted installed 0.4.5 is unchanged.
+### Portfolio governance
+See [portfolio governance](references/portfolio-governance-preview.md) for the optional CLI and strict evidence boundaries.

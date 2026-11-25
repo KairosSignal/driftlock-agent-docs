@@ -1,5 +1,15 @@
 # Driftlock Changelog
 
+## 0.5.0 — evidence-linked portfolio governance (2026-11-25)
+
+- Derive typed links between intake, plans, tasks, rework, problems and reports.
+- Project suggestion status from scoped, committed acceptance evidence; preserve ambiguous and unfinished work instead of silently closing it.
+- Capture canonical engineering lessons with deduplicated evidence and targeted task-entry recall.
+- Support explicitly approved lesson promotion and bounded deterministic checks.
+- Preserve existing review and deployment gates. No additional runtime dependencies, external model calls, database or background service.
+- Historical records may require explicit ownership and link reconciliation. Semantic extraction and promotion still require operator judgment.
+
+
 ## 0.4.3 — R3 gate-closure candidate (2026-10-08)
 
 Independent R3 audited Skill 9f7ae14 / Company a551ac6: FAIL.

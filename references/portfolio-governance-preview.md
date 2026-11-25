@@ -1,6 +1,6 @@
-# Portfolio governance preview (0.5 candidate)
+# Portfolio governance (0.5.0)
 
-Owner-authorized isolated upgrade, 2026-11-25. Base 7192084850c72a9caa7c50a93f7903f9485e4618 (accepted 0.4.5). No installation, deployment, registry switch, external model API, daemon, database, or visual interface. Reuse existing PLAN/TASK/intake/report authority. Candidate is not independently accepted.
+This optional upgrade reuses existing PLAN/TASK/intake/report authority. It adds no external model API, daemon, database, or visual interface.
 
 Use the new CLI from the candidate worktree:
 - portfolio overview ROOT: document-derived project and task counts; no fabricated progress percentages.
