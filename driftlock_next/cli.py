@@ -20,6 +20,17 @@ def configure(subs):
             cmd.add_argument("project_root")
             cmd.add_argument("--project", default=None)
             cmd.add_argument("--format", choices=("json", "text"), default="text")
+            if name == "portfolio":
+                if action in ("lessons","advise"):
+                    cmd.add_argument("--query", required=action=="advise", default=None)
+                if action == "link":
+                    for field in ("id","target","expected-sha"):
+                        cmd.add_argument("--"+field, required=True)
+                    cmd.add_argument("--approve", action="store_true")
+                if action == "record-lesson":
+                    for field in ("id","cause","task-ids","lesson","prevention","evidence","expected-sha"):
+                        cmd.add_argument("--"+field, required=True)
+                    cmd.add_argument("--approve", action="store_true")
             if name == "skill" and action == "status":
                 cmd.add_argument("--installed", required=True)
             if name == "intake":
@@ -62,7 +73,8 @@ def configure(subs):
                          ("problem", ("list","candidates","reconcile","transition")),
                          ("git", ("audit",)),
                          ("doctor", ("check",)),
-                         ("skill", ("status",))):
+                         ("skill", ("status",)),
+                         ("portfolio", ("overview","backlog","dependencies","lessons","resources","record-lesson","link","advise"))):
         group(key, actions)
 
 def run(args, base_script):
@@ -111,6 +123,16 @@ def run(args, base_script):
         data = git_audit(root, p)
     elif args.command == "doctor":
         data = doctor(root, p, base_script)
+    elif args.command == "portfolio":
+        from . import portfolio
+        if args.action == "link":
+            data = portfolio.link_record(root,p,args.id,args.target,args.expected_sha,args.approve)
+        elif args.action == "record-lesson":
+            data = portfolio.record_lesson(root,p,args.id,args.cause,args.task_ids,args.lesson,args.prevention,args.evidence,args.expected_sha,args.approve)
+        elif args.action in ("lessons","advise"):
+            data = getattr(portfolio,args.action)(root,p,args.query)
+        else:
+            data = getattr(portfolio,args.action)(root,p)
     elif args.command == "skill":
         from pathlib import Path
         data = skill_status(Path(base_script).parent.parent, args.installed)

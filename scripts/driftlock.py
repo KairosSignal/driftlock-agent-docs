@@ -1573,7 +1573,7 @@ def main(argv=None):
     args = None
     try:
         args = build_parser().parse_args(argv)
-        if args.command in {"project", "context", "intake", "task", "plan", "problem", "git", "doctor", "skill"}:
+        if args.command in {"project", "context", "intake", "task", "plan", "problem", "git", "doctor", "skill", "portfolio"}:
             from driftlock_next.cli import run
             return run(args, Path(__file__).resolve())
         project = Project.load(args.project_root)

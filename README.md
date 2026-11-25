@@ -476,3 +476,5 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 ## License
 
 MIT
+### Isolated portfolio-governance preview
+See [portfolio governance preview](references/portfolio-governance-preview.md) for the new optional CLI and strict evidence boundaries. The accepted installed 0.4.5 is unchanged.
