@@ -163,3 +163,20 @@ class KnowledgeRelationsTests(unittest.TestCase):
         self.assertEqual(r.sync(self.root)["items"][0]["state"],"completed")
         self.task("AMZ-TASK-00001-R2",extra="rework_of: AMZ-TASK-00001-R1")
         self.assertEqual(r.sync(self.root)["items"][0]["state"],"completion_evidence_stale")
+
+    def test_direct_plan_references_fail_closed(self):
+        for extra in ("plan: [broken","plan_id_ref: MISSING-PLAN","plan: planning/missing.md"):
+            with self.subTest(extra=extra):
+                self.task(extra="intake_ids: [IDEA-X]\n"+extra)
+                d=r.sync(self.root)["items"][0]
+                self.assertEqual(d["state"],"linked_scope_unresolved")
+                self.assertTrue(any(x["field"] in ("plan","plan_id_ref") for x in d["scope_warnings"]))
+    def test_numbered_and_legacy_repair_edges(self):
+        self.task(extra="intake_ids: [IDEA-X]")
+        self.task("AMZ-TASK-00002",extra="rework_of: AMZ-TASK-00001")
+        d=r.sync(self.root)["items"][0]
+        self.assertEqual(d["scope_tasks"],["AMZ-TASK-00001","AMZ-TASK-00002"])
+        self.task(extra="intake_ids: [IDEA-X]\nrework_of: AMZ-TASK-00002")
+        d=r.sync(self.root)["items"][0]
+        self.assertEqual(d["state"],"linked_scope_unresolved")
+        self.assertTrue(any(x["code"]=="CYCLIC_REWORK_SCOPE" for x in d["scope_warnings"]))

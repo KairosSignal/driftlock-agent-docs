@@ -28,7 +28,7 @@ def graph(root,project=None):
         if relation=="rework_of":
             match=re.fullmatch(r"(.+)-R([1-9][0-9]*)",a)
             expected=(match[1] if int(match[2])==1 else match[1]+"-R"+str(int(match[2])-1)) if match else None
-            if left["kind"]!="task" or right["kind"]!="task" or not left.get("project") or left["project"]!=right.get("project") or b!=expected:
+            if left["kind"]!="task" or right["kind"]!="task" or not left.get("project") or left["project"]!=right.get("project") or a==b or (match and b!=expected):
                 warnings.append({"code":"INVALID_TYPED_RELATION","from":a,"to":b,"field":relation});return
         if a==b:return
         key=(a,b,relation)
@@ -47,13 +47,20 @@ def graph(root,project=None):
             for x in values(m,field):add(i,x,rel,r["path"]+"#"+field)
         for field in ("plan","plan_id_ref"):
             v=m.get(field)
-            if not isinstance(v,str):continue
+            if v is None or v=="" or v=="none":continue
+            if not isinstance(v,str):
+                warnings.append({"code":"INVALID_RELATION","from":i,"field":field});continue
+            target=None
             base=project_by_id.get(r["project"],{}).get("_resolved_root")
-            if v in nodes and nodes[v]["kind"]=="plan":add(i,v,"implements_plan",r["path"]+"#"+field)
+            if v in nodes and nodes[v]["kind"]=="plan":target=v
             elif base and v.endswith(".md"):
-                try: path=str(within(base,v))
-                except Exception:continue
-                if path in paths and nodes[paths[path]]["kind"]=="plan":add(i,paths[path],"implements_plan",r["path"]+"#"+field)
+                try:path=str(within(base,v))
+                except Exception:path=None
+                if path in paths and nodes[paths[path]]["kind"]=="plan":target=paths[path]
+            if target:
+                add(i,target,"implements_plan",r["path"]+"#"+field)
+            else:
+                warnings.append({"code":"UNRESOLVED_RELATION","from":i,"to":v,"field":field})
     for i,items in captures.items():
         if len(items)!=1:continue
         for target in items[0]["bound"]:
@@ -141,6 +148,17 @@ def _linked_scope(records,g,ident):
         if r["kind"]=="task" and any(re.fullmatch(re.escape(i)+r"(?:-R[1-9][0-9]*)+",r["id"]) for i in tasks):
             if r["id"] not in tasks:
                 unresolved.append({"code":"UNVERIFIED_REWORK_DESCENDANT","from":r["id"]})
+    repair_parents=defaultdict(list)
+    for e in g["edges"]:
+        if e["relation"]=="rework_of" and e["from"] in tasks and e["to"] in tasks:
+            repair_parents[e["from"]].append(e["to"])
+    for start in repair_parents:
+        pending=[(start,frozenset())]
+        while pending:
+            cur,seen=pending.pop()
+            if cur in seen:
+                unresolved.append({"code":"CYCLIC_REWORK_SCOPE","from":start});break
+            pending.extend((parent,seen|{cur}) for parent in repair_parents.get(cur,[]))
     return sorted(tasks),sorted(plans),unresolved
 
 def _receipt(item):
