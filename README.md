@@ -67,7 +67,232 @@ See `references/problem-register-and-feedback.md` for the recommended states,
 minimum fields, task boundary, deduplication rules, and a Driftlock index
 example.
 
-## Current Release: 0.2.2
+## Driftlock 0.5.0 — evidence-linked portfolio governance
+
+The optional portfolio CLI adds derived project and backlog views, typed
+relationships, task dependency analysis, evidence-linked lessons, targeted
+recall, and approved rule promotion. It reuses existing project records and
+review gates rather than adding a database or background service.
+
+See [portfolio governance](references/portfolio-governance-preview.md) for
+commands, requirements and limitations.
+
+## Historical development notes
+
+## Driftlock Unified 0.4.5 — R5 explicit acceptance-attestation protocol
+
+R5 independently reviewed v0.4.4 (69e5ef4) and reported FAIL:
+Markdown _FAIL_ / __FAIL__ still bypassed outcome-word parsing.
+
+v0.4.5 does **not** attempt another natural-language classifier. Terminal
+Problem closure now requires a dedicated, tracked, unchanged acceptance-only
+attestation with **exactly four scalar metadata fields** and a short fixed
+heading (or no body). Arbitrary Markdown body content is denied, including
+negative/positive prose, emphasis, tables or alternate verdicts.
+
+The four fields are exactly:
+- task_id: exact authoritative closed TASK identifier
+- verdict: PASS
+- review_status: accepted
+- candidate_commit: exact 40-character lowercase candidate SHA
+
+Example:
+
+    ---
+    task_id: TASK-200
+    verdict: PASS
+    review_status: accepted
+    candidate_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    ---
+    # Independent acceptance attestation
+
+The report must be HEAD-committed and match the current local file. It is a
+closure *protocol artifact*, not a substitute for independent source review.
+Rich reviewer notes and historical FAIL records remain in separate tracked
+reports and must be independently checked before acceptance is authorized.
+
+A reviewer saying PASS in a Git file alone cannot cryptographically prove
+independence or factual correctness. An operator must verify review provenance
+and explicitly authorize transition. No model inferred acceptance from prose.
+Existing approvals are not migrated or rewritten automatically.
+
+No installed Skill, Company Control authority, Amazon service or production
+environment is touched by this candidate. Independent R6 review is required.
+
+## Driftlock Unified 0.4.4 — R4 minimal acceptance-gate repair candidate
+
+R4 independently reviewed Skill 938dd761 / Company Control a551ac6
+and returned FAIL. This isolated candidate fixes R4's two incomplete gates:
+
+- For **terminal Problem resolution only**, a dedicated HEAD-committed review
+  report must contain an exact structured PASS but no standalone negative
+  outcome token anywhere in its Markdown body. This intentionally refuses
+  reports discussing historical FAIL results; write a short clean acceptance
+  record instead. This is a fail-closed protocol, not a free-text sentiment
+  classifier. It prevents punctuation, Markdown layout and multiline variants
+  from creating an alternative terminal verdict.
+- Current TASK context and task.check call the same identity-aware rework
+  predecessor gate. Missing, duplicate and wrong-owner references block both
+  paths. Historical records without an explicit rework_of declaration are
+  reported as legacy review warnings, without rewriting old records.
+- Adds adversarial tests for negative outcome variants, R1/R10 absence,
+  project-owner mismatch, positive closure and legacy compatibility.
+- Retains v0.4.3 Git safety boundaries. No current task switch,
+  installation, GitHub publication, production deployment or remote API run.
+
+This candidate requires independent R5 review; the previous R4 report remains
+an immutable separate audit artifact.
+
+## Driftlock Unified 0.4.3 — R3 final-gate repair candidate
+
+R3 independent review of Skill 9f7ae14 and Company Control a551ac6 was FAIL,
+with three remaining HIGH issues and one MEDIUM check-schema issue.
+
+This isolated revision:
+- Rejects multi-line Markdown FAIL/rejected review conclusions and split
+  phrases indicating the reviewed candidate is not independently verified;
+  requires structured, HEAD-committed PASS and exact TASK/commit identity.
+- Runs predecessor existence, uniqueness and ownership checks in current
+  context in addition to task checks, covering correctly named R1 and R10
+  predecessors that are absent from the actual authoritative repository.
+- Disables Git optional writes, fsmonitor hooks and unsafe inherited repo
+  execution options in BOTH the original five-command checker and new
+  governance operations, including the doctor subprocess.
+- Validates doctor result-state vocabulary and agreement between check
+  results and exit codes. UNKNOWN/BLOCKED document states cannot be treated
+  as a clean pass.
+- Adds read-only security configuration and negative lifecycle regression
+  tests, with no change to existing business or deployment authority.
+
+This version remains a candidate. It cannot authorize installation, release
+or deployment merely because its unit tests pass. Actual Windows operation,
+same-UID hostile filesystem races and distributed clones remain explicitly
+outside the local guarantees.
+
+## Driftlock Unified 0.4.2 — R2 focused security repair candidate
+
+R2 independent review of 531c779 (Skill) and a551ac6 (Company Control)
+was FAIL: three HIGH fixed, seven partial, plus two new findings.
+This separate worktree addresses the cited R2 edge cases without touching
+frozen R2 inputs. It is still a *candidate*, NOT cleared for installation.
+
+- Structured PASS reviews with duplicate or contradictory verdicts and
+  explicit negative text cannot close a problem.
+- Versioned TASK lifecycle and rework lineage produce the same hard failures
+  from task.check and context.check; no implied release from Review PASS.
+- Company aggregation cannot edit other projects' formal plans or weaken
+  the owning project's remote policy.
+- Doctor validates the complete built-in check schema and uses exit 1 for
+  review_required. It never runs the external handoff automatically.
+- Git checks are read-only with optional locks disabled.
+- Quoted task IDs on local branches are included in number reservations.
+- POSIX authoritative writes are pinned to verified directory descriptors;
+  lock files are checked for regular inode identity. All cooperating PLAN
+  writers serialize through a graph-level lock and reject unhealthy graphs.
+  Same-UID hostile filesystem mutation and native Windows security require
+  separate platform threat-model verification before release.
+- References now reflect the actual handoff procedure.
+
+## Previous 0.4.1 Candidate (failed R2)
+
+The predecessor v0.4.0 candidate failed independent Review with ten HIGH and
+three MEDIUM findings. This local R1 repair hardens the existing code:
+
+- Problem closure requires a tracked, committed, unchanged structured PASS
+  report with exact TASK and candidate SHA plus matching accepted review state.
+  A positive word in failed or unrelated prose is never sufficient.
+- Problem updates preserve existing Gate and multi-TASK context.
+- Scoped project reads/writes enforce record ownership and normalized aliases.
+  Company-wide overview permissions cannot edit another project's formal PLAN.
+- TASK Review, release permissions, candidate state and Git are checked
+  independently. Legacy identifiers are preserved and reported as such.
+- Read-only doctor never automatically executes project-provided scripts.
+  Run the authoritative Company Control handoff separately. Stale documents
+  produce review_required rather than silently reporting all current.
+- The prefix allocator scans local registered worktrees plus committed TASK
+  records in local branches; the Git-common-dir ledger is still only a local
+  guarantee. Task reservations do not authorize construction.
+- Portable locking removes unconditional fcntl imports. POSIX ledger parents
+  reject symlinks. Actual Windows smoke remains required before release.
+- PLAN transitions validate the resulting graph before any authorized write.
+- Skill install comparison uses the complete runtime/contract manifest.
+- Company Control uses independent project pointers, corrected aliases and
+  five additional Driftlock-managed planning/intake documents.
+
+This remains an uninstalled, unpublished candidate, awaiting independent R2
+Review. There is no additional model API invocation or deployment.
+
+## Previous 0.4.0 Candidate (failed R1)
+
+This candidate reuses the current AI for natural-language interpretation.
+No separate AI model, API key, prompt-router configuration or unattended agent
+is involved. See references/ai-operator-contract.md for correct behavior when
+a user interrupts construction with a question, new idea or feedback.
+
+Task-ID reservations are synchronized across worktrees sharing one Git common
+directory. This is a local-host guarantee, NOT distributed global uniqueness.
+Independent clones must reconcile with their authoritative Company Control
+before assigning an actual construction TASK. Reservation metadata is stored
+in Git's shared metadata and needs an independent backup.
+
+Adds end-to-end governance operations for company-scale local-only engineering,
+without replacing existing Company Control TASK and Problem Register authority.
+
+Production-grade deterministic operations included in this development candidate:
+
+- Read the existing markdown Problem Register, propose similar-issue matches
+  without silently merging, capture new feedback into its existing table,
+  reconcile related TASK states and apply authorized lifecycle transitions.
+- Validate formal PLAN status and dependency/supersedes graph, trace consumers
+  and perform explicitly approved, exact-hash status changes.
+- Reserve project-prefixed TASK IDs with single-filesystem locking; reservation
+  never grants construction approval and is not a distributed allocator.
+- Audit Git worktrees/branches, unique unmerged commits and remote divergence.
+- Detect installed Skill version drift and diagnose cross-project handoffs.
+- Apply a local-only remote policy only when explicitly configured.
+
+Use commands such as:
+
+    python3 scripts/driftlock.py problem reconcile /path/to/company --project governance
+    python3 scripts/driftlock.py problem candidates /path/to/company --project governance --text "observed bug"
+    python3 scripts/driftlock.py plan validate /path/to/company --project governance
+    python3 scripts/driftlock.py task reserve /path/to/company --project governance --expected-sha CURRENT_HASH --approve
+    python3 scripts/driftlock.py skill status /path/to/company --installed /root/.codex/skills/driftlock
+
+Writer commands require explicit authorization, IDs, provenance and/or version
+hashes. Semantic interpretation and verification evidence remain human/AI-assisted
+under existing project rules. The new CLI never pushes, deploys, deletes or
+changes an active TASK pointer.
+
+See tests/test_end_to_end.py and references for supported state transitions.
+
+Adds opt-in multi-project governance with one installable Skill, preserving the
+original five CLI commands and unchanged index schema/lock format.
+
+Use the existing scripts/driftlock.py entry point:
+
+    python3 scripts/driftlock.py project list /path/to/control
+    python3 scripts/driftlock.py doctor check /path/to/control
+    python3 scripts/driftlock.py git audit /path/to/control
+    python3 scripts/driftlock.py intake propose /path/to/control --kind idea --text "new idea"
+
+For multi-project routing, adapt examples/company-control/projects.json into
+the target project's .driftlock/projects.json. Use --project when multiple
+logical projects are registered.
+
+For durable user-authorized intake, configure idea/problem/research paths,
+then run intake record with --project, --kind, --text, --id, --source,
+--expected-sha (SHA-256 of the current file, empty file if none) and --approve.
+It atomically appends unverified input and returns the actual path/hash.
+It does not create TASKs, switch context, deploy, push, or execute paid calls.
+
+See references/governance-intake-and-context.md and
+references/governance-planning-and-identity.md.
+
+The local candidate has NOT replaced the installed Codex Skill and has NOT
+been published to GitHub. Deployment/installation remain separate actions.
+
+## Previous Release: 0.2.2
 
 `0.2.2` adds recommended task lifecycle/status semantics so repository-native
 projects can distinguish implementation, review acceptance, integration,
@@ -263,3 +488,5 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 ## License
 
 MIT
+### Portfolio governance
+See [portfolio governance](references/portfolio-governance-preview.md) for the optional CLI and strict evidence boundaries.

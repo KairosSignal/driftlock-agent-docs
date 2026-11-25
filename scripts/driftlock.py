@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Deterministic documentation graph and freshness manager.
 
-All commands are read-only except ``verify``, which atomically updates
-``.driftlock.lock.json``. The implementation uses only the Python standard
-library and never rewrites Markdown content.
+The five original documentation commands keep their behavior: verify alone
+updates the freshness lock. Opt-in governance intake recording is a separately
+authorized writer, using exact-version compare-and-swap. Other new governance
+commands are read-only. Uses only the Python standard library.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from urllib.parse import urlsplit
 
 
 SCHEMA_VERSION = 2
-TOOL_VERSION = "0.2.2"
+TOOL_VERSION = "0.5.0"
 ASCII_PUNCTUATION = frozenset(r"!\"#$%&'()*+,-./:;<=>?@[\]^_`{|}~")
 ROLES = {
     "project_entry", "module_index", "submodule_index", "status", "task_board",
@@ -214,7 +215,20 @@ def extract_index_blocks(text):
 
 
 def run_git(root, *args):
-    return subprocess.run(["git", *args], cwd=root, text=True, capture_output=True)
+    # The documents repository is data, not a source of executable helpers.
+    safe_env=dict(os.environ)
+    safe_env.update({
+        "GIT_OPTIONAL_LOCKS":"0",
+        "GIT_CONFIG_COUNT":"2",
+        "GIT_CONFIG_KEY_0":"core.fsmonitor",
+        "GIT_CONFIG_VALUE_0":"false",
+        "GIT_CONFIG_KEY_1":"core.hooksPath",
+        "GIT_CONFIG_VALUE_1":os.devnull,
+    })
+    return subprocess.run(["git", "--no-optional-locks",
+                           "-c", "core.fsmonitor=false",
+                           "-c", "core.hooksPath="+os.devnull, *args],
+                          cwd=root, text=True, capture_output=True, env=safe_env)
 
 
 def git_root(root):
@@ -1544,6 +1558,14 @@ def build_parser():
     verify = subs.add_parser("verify"); verify.add_argument("project_root"); verify.add_argument("--doc", required=True)
     verify.add_argument("--status-effect", choices=("initial", "changed", "unchanged")); verify.add_argument("--allow-hash-only", action="store_true")
     verify.add_argument("--format", choices=("text", "json"), default="text")
+    # Additional governance commands are opt-in; existing CLI semantics remain unchanged.
+    import sys as _sys
+    from pathlib import Path as _Path
+    _root = str(_Path(__file__).resolve().parents[1])
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
+    from driftlock_next.cli import configure
+    configure(subs)
     return parser
 
 
@@ -1551,6 +1573,9 @@ def main(argv=None):
     args = None
     try:
         args = build_parser().parse_args(argv)
+        if args.command in {"project", "context", "intake", "task", "plan", "problem", "git", "doctor", "skill", "portfolio"}:
+            from driftlock_next.cli import run
+            return run(args, Path(__file__).resolve())
         project = Project.load(args.project_root)
         if args.command == "verify":
             record = project.verify(args.doc, args.status_effect, args.allow_hash_only)
@@ -1566,21 +1591,35 @@ def main(argv=None):
         else:
             report = getattr(project, args.command.replace("-", "_"))()
         return print_report(project, report, args.format)
-    except CliArgumentError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 3
-    except ValueError as exc:
-        payload = {
-            "command": getattr(args, "command", None),
-            "schema_version": SCHEMA_VERSION,
-            "tool_version": TOOL_VERSION,
-            "blocking_errors": [{"code": str(exc).split(":", 1)[0], "message": str(exc)}],
-        }
-        if getattr(args, "format", "text") == "json": print(json.dumps(payload, indent=2))
-        else: print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
-    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
-        print(f"ERROR: {exc}", file=sys.stderr); return 3
+    except Exception as exc:
+        from driftlock_next.common import GovernanceError
+        if isinstance(exc, GovernanceError):
+            if getattr(args, "format", "text") == "json":
+                print(json.dumps({"ok": False, "error": {"code": exc.code, "message": str(exc)}}, ensure_ascii=False))
+            else:
+                print(f"ERROR {exc.code}: {exc}", file=sys.stderr)
+            return 2
+        if isinstance(exc, CliArgumentError):
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 3
+        if isinstance(exc, (ValueError, OSError, subprocess.SubprocessError, json.JSONDecodeError)):
+            if isinstance(exc, ValueError):
+                payload = {
+                    "command": getattr(args, "command", None),
+                    "schema_version": SCHEMA_VERSION,
+                    "tool_version": TOOL_VERSION,
+                    "blocking_errors": [{"code": str(exc).split(":", 1)[0], "message": str(exc)}],
+                }
+                if getattr(args, "format", "text") == "json":
+                    print(json.dumps(payload, indent=2))
+                else:
+                    print(f"ERROR: {exc}", file=sys.stderr)
+                return 2
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 3
+        raise
+
+
 
 
 if __name__ == "__main__":
