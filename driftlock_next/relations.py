@@ -114,7 +114,22 @@ def _linked_scope(records,g,ident):
             tasks.add(e["from"])
         if e["relation"]=="related_task" and e["from"] in plans and e["to"] in records and records[e["to"]]["kind"]=="task":
             tasks.add(e["to"])
+    # A rework descendant belongs to the completion scope even when the
+    # original intake link was only recorded on the initial task.
+    expanded=True
+    while expanded:
+        before=len(tasks)
+        for e in g["edges"]:
+            if e["relation"]=="rework_of" and e["to"] in tasks and e["from"] in records and records[e["from"]]["kind"]=="task":
+                tasks.add(e["from"])
+        expanded=len(tasks)!=before
     unresolved=[e for e in g["warnings"] if e.get("code")=="UNRESOLVED_RELATION" and (e.get("from") in plans|tasks or e.get("to")==ident)]
+    # Do not silently ignore a legacy or malformed rework pointer if the
+    # identifier itself is a descendant of a linked task.
+    for r in records.values():
+        if r["kind"]=="task" and any(re.fullmatch(re.escape(i)+r"(?:-R[1-9][0-9]*)+",r["id"]) for i in tasks):
+            if r["id"] not in tasks:
+                unresolved.append({"code":"UNVERIFIED_REWORK_DESCENDANT","from":r["id"]})
     return sorted(tasks),sorted(plans),unresolved
 
 def _receipt(item):
@@ -136,6 +151,7 @@ def _validate_scope(root,item,records,tasks,plans,unresolved,receipt):
         return False
     if any(records[i]["status"]!="implemented" for i in plans):return False
     if receipt.get("capture_sha")!=sha(item["text"]):return False
+    if receipt.get("record_hashes")!={i:sha(text_file(records[i]["path"])) for i in tasks+plans}:return False
     evidence=receipt.get("evidence")
     if not isinstance(evidence,dict) or set(evidence)!=set(tasks):return False
     from .problems import _verify_resolution_claim
@@ -176,7 +192,7 @@ def accept_scope(root,project,ident,evidence_json,expected_sha,approved):
         r=records[task];owner=select(root,r["project"])
         f=within(owner["_resolved_root"],rel)
         evidence[task]={"path":rel,"sha256":sha(text_file(f)),"candidate":r["meta"].get("candidate_commit")}
-    receipt={"capture_sha":sha(item["text"]),"tasks":tasks,"plans":plans,"evidence":evidence}
+    receipt={"capture_sha":sha(item["text"]),"tasks":tasks,"plans":plans,"evidence":evidence,"record_hashes":{i:sha(text_file(records[i]["path"])) for i in tasks+plans}}
     if not _validate_scope(root,item,records,tasks,plans,unresolved,receipt):
         fail("SCOPE_NOT_VERIFIED","Require full scope, all closed PASS tasks, implemented plans and exact committed attestations")
     m=next(m for m in INTAKE.finditer(body) if m[1]==ident)

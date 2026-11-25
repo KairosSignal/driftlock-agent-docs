@@ -107,3 +107,18 @@ class KnowledgeRelationsTests(unittest.TestCase):
         with self.assertRaises(GovernanceError):
             r.accept_scope(self.root,"governance","IDEA-X",json.dumps({"AMZ-TASK-00001":"reports/attest.md"}),sha(self.inbox.read_text()),True)
         self.assertNotIn("Completion-Receipt",self.inbox.read_text())
+
+    def test_open_rework_prevents_scope_completion(self):
+        c="a"*40
+        self.task(status="closed",review="pass",extra=f"intake_ids: [IDEA-X]\ntask_contract_version: 2\ncandidate_commit: {c}\ncandidate_state: frozen")
+        self.task("AMZ-TASK-00001-R1",extra="rework_of: AMZ-TASK-00001")
+        d=r.sync(self.root)["items"][0]
+        self.assertEqual(d["scope_tasks"],["AMZ-TASK-00001","AMZ-TASK-00001-R1"])
+        self.assertNotEqual(d["state"],"closure_review_required")
+        with self.assertRaises(GovernanceError):
+            r.accept_scope(self.root,"governance","IDEA-X",json.dumps({"AMZ-TASK-00001":"reports/attest.md"}),sha(self.inbox.read_text()),True)
+    def test_unlinked_legacy_rework_requires_review(self):
+        self.task(extra="intake_ids: [IDEA-X]")
+        self.task("AMZ-TASK-00001-R2")
+        d=r.sync(self.root)["items"][0]
+        self.assertEqual(d["state"],"linked_scope_unresolved")
