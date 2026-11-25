@@ -99,7 +99,21 @@ def inventory(root, project=None):
     unique = {}
     for ident, variants in records.items():
         if len(variants)!=1:
-            warnings.append({"code":"DUPLICATE_RECORD_ID","id":ident,"paths":[r["path"] for r in variants]})
+            # Preserve explicit scope references from every ambiguous variant,
+            # without admitting any of them as an authoritative record.
+            scope_refs=[]
+            for r in variants:
+                for field in ("intake_ids","related_tasks","rework_of","plan","plan_id_ref"):
+                    raw=r["meta"].get(field)
+                    if not raw:continue
+                    if field in ("plan","plan_id_ref") and isinstance(raw,str) and raw.endswith(".md"):
+                        refs=[raw]
+                    else:
+                        try:refs=links(raw)
+                        except ValueError:refs=[]
+                    for target in refs:
+                        scope_refs.append({"field":field,"target":target,"project":r["project"],"path":r["path"]})
+            warnings.append({"code":"DUPLICATE_RECORD_ID","id":ident,"paths":[r["path"] for r in variants],"scope_refs":scope_refs})
         else:
             unique[ident] = variants[0]
     for ident, variants in captures.items():

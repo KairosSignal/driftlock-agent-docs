@@ -187,3 +187,32 @@ class KnowledgeRelationsTests(unittest.TestCase):
         d=r.sync(self.root)["items"][0]
         self.assertEqual(d["state"],"linked_scope_unresolved")
         self.assertTrue(any(x["code"]=="UNSTRUCTURED_TASK_RECORD" for x in d["scope_warnings"]))
+
+    def test_duplicate_scope_identity_preserves_intake_reference(self):
+        candidate="a"*40
+        self.task(status="closed",review="pass",extra=f"intake_ids: [IDEA-X]\ntask_contract_version: 2\ncandidate_commit: {candidate}\ncandidate_state: frozen")
+        second=self.task("AMZ-TASK-00002",extra="intake_ids: [IDEA-X]")
+        (second.parent/"duplicate.md").write_text(second.read_text().replace("intake_ids: [IDEA-X]",""))
+        row=r.sync(self.root)["items"][0]
+        self.assertEqual(row["state"],"linked_scope_unresolved")
+        self.assertTrue(any(w["code"]=="DUPLICATE_RECORD_ID" and w["id"]=="AMZ-TASK-00002" for w in row["scope_warnings"]))
+        with self.assertRaises(GovernanceError):
+            r.accept_scope(self.root,"governance","IDEA-X",json.dumps({"AMZ-TASK-00001":"reports/attest.md"}),sha(self.inbox.read_text()),True)
+        second.unlink()
+        row=r.sync(self.root)["items"][0]
+        self.assertEqual(row["state"],"closure_review_required")
+
+    def test_duplicate_only_link_visible_in_project_scope(self):
+        second=self.task("AMZ-TASK-00002",extra="intake_ids: [IDEA-X]")
+        (second.parent/"duplicate.md").write_text(second.read_text())
+        for scope in (None,"amazon_agent"):
+            row=r.sync(self.root,scope)["items"][0]
+            self.assertEqual(row["state"],"linked_scope_unresolved")
+
+    def test_ambiguous_task_link_to_plan_is_not_lost(self):
+        self.task(extra="intake_ids: [IDEA-X]")
+        (self.root/"planning/p.md").write_text("---\nplan_id: AMZ-PLAN-X\nproject_id: amazon_agent\nstatus: implemented\nintake_ids: [IDEA-X]\n---\n# plan\n")
+        second=self.task("AMZ-TASK-00002",extra="plan_id_ref: AMZ-PLAN-X")
+        (second.parent/"duplicate.md").write_text(second.read_text())
+        row=r.sync(self.root)["items"][0]
+        self.assertEqual(row["state"],"linked_scope_unresolved")

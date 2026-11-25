@@ -139,9 +139,17 @@ def _linked_scope(records,g,ident):
     scope_fields={"implements_intake","implements_plan","related_task","rework_of","intake_ids","related_tasks","plan","plan_id_ref"}
     unresolved=[e for e in g["warnings"] if e.get("code") in ("UNRESOLVED_RELATION","INVALID_RELATION","INVALID_TYPED_RELATION") and e.get("field") in scope_fields and (e.get("from") in plans|tasks or e.get("to")==ident or e.get("field")=="rework_of" and e.get("to") in tasks)]
     families={re.sub(r"-R[1-9][0-9]*$","",i) for i in tasks}
+    # Ambiguous variants are excluded from graph nodes, but their explicit
+    # associations must remain visible to closure validation.
     for w in g["warnings"]:
-        if w.get("code") in ("DUPLICATE_RECORD_ID","UNSTRUCTURED_TASK_RECORD") and isinstance(w.get("id"),str) and (w["id"] in plans|tasks or re.sub(r"-R[1-9][0-9]*$","",w["id"]) in families):
-            unresolved.append(w)
+        if w.get("code") not in ("DUPLICATE_RECORD_ID","UNSTRUCTURED_TASK_RECORD") or not isinstance(w.get("id"),str):
+            continue
+        relevant=w["id"] in plans|tasks or re.sub(r"-R[1-9][0-9]*$","",w["id"]) in families
+        for ref in w.get("scope_refs",[]):
+            field,target=ref["field"],ref["target"]
+            if field=="intake_ids" and target==ident or field in ("rework_of","related_tasks") and target in tasks or field in ("plan","plan_id_ref") and (target in plans or any(records[i]["path"].endswith("/"+target) for i in plans)):
+                relevant=True
+        if relevant:unresolved.append(w)
     # Do not silently ignore a legacy or malformed rework pointer if the
     # identifier itself is a descendant of a linked task.
     for r in records.values():
@@ -277,6 +285,14 @@ def sync(root,project=None):
             c=captures[ident][0]
             rows[ident]={"id":ident,"kind":c["kind"],"state":"link_review_required","source":c["path"],
                          "linked":[],"candidate_links":[],"text_excerpt":c["text"][:240]}
+    for w in all_graph["warnings"]:
+        if w.get("code")!="DUPLICATE_RECORD_ID":continue
+        for ref in w.get("scope_refs",[]):
+            ident=ref["target"]
+            if ref["field"]!="intake_ids" or (project and project not in ("governance","company") and ref["project"]!=project):continue
+            if ident not in rows and len(captures.get(ident,[]))==1:
+                c=captures[ident][0]
+                rows[ident]={"id":ident,"kind":c["kind"],"state":"linked_scope_unresolved","source":c["path"],"linked":[],"candidate_links":[],"text_excerpt":c["text"][:240]}
     for ident,row in rows.items():
         item=captures[ident][0]
         rcp=_receipt(item)
@@ -285,10 +301,11 @@ def sync(root,project=None):
         ts,pl,un=_linked_scope(records,all_graph,ident)
         if rcp:
             row["state"]="completed" if _validate_scope(root,item,records,ts,pl,un,rcp) else "completion_evidence_stale"
+        elif un:
+            row["state"]="linked_scope_unresolved"
         elif ts:
             states=[records[i]["status"] for i in ts]
-            if un: row["state"]="linked_scope_unresolved"
-            elif all(verified_terminal(records[i]) for i in _scope_partition(records,ts)[0]) and all(records[i]["status"]=="implemented" for i in pl):
+            if all(verified_terminal(records[i]) for i in _scope_partition(records,ts)[0]) and all(records[i]["status"]=="implemented" for i in pl):
                 row["state"]="closure_review_required"
             elif any(records[i]["status"] in ("deployed","deployed_pending_close","deployed_production_verified") and records[i]["review"]!="pass" for i in ts):
                 row["state"]="deployed_review_pending"
