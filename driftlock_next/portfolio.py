@@ -260,7 +260,13 @@ def lessons(root, project=None, query=None):
                 evidence.append({k:m.get(k) for k in ("lesson_id","project_id","root_cause_key","lesson","prevention","evidence","status")}|{"task_ids":ids,"path":str(path)})
             except Exception as exc:
                 warnings.append({"code":"INVALID_LESSON","path":str(path),"detail":str(exc)[:200]})
-    causes=[{"project":p,"root_cause_key":c,"tasks":[record_view(r) for r in rs]} for (p,c),rs in explicit.items()]
+    for item in evidence:
+        key=(item["project_id"],item["root_cause_key"])
+        known={r["id"] for r in explicit[key]}
+        explicit[key].extend(records[i] for i in item["task_ids"] if i not in known)
+    causes=[{"project":p,"root_cause_key":c,"tasks":[record_view(r) for r in rs],
+             "lesson_ids":[item["lesson_id"] for item in evidence if (item["project_id"],item["root_cause_key"])==(p,c)],
+             "interpretation":"operator-recorded cause; evidence still needs verification"} for (p,c),rs in explicit.items()]
     if query:
         q=query.casefold()
         evidence=[x for x in evidence if q in json.dumps(x,ensure_ascii=False).casefold()]
@@ -405,7 +411,7 @@ def advise(root,project=None,query=None):
     candidates=[]
     for r in records.values():
         if project and project not in ("governance","company") and r["project"]!=project:continue
-        t=" ".join(str(x or "") for x in (r["id"],r["title"],r["meta"].get("root_cause_key")))
+        t=" ".join(str(x or "") for x in (r["id"],r["title"],r["meta"].get("root_cause_key"),Path(r["path"]).stem))
         s=score(t)
         if s>=.25:candidates.append({**record_view(r),"similarity":s})
     for ident,variants in captures.items():

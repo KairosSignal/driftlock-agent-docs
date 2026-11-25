@@ -59,6 +59,7 @@ class PortfolioTests(unittest.TestCase):
         d=portfolio.lessons(self.root,"amazon_agent","timeout")
         self.assertEqual(len(d["lessons"]),1)
         self.assertEqual(d["lessons"][0]["status"],"captured_unverified")
+        self.assertEqual(d["root_causes"][0]["lesson_ids"],["LESSON-X"])
         with self.assertRaises(GovernanceError):
             portfolio.record_lesson(self.root,"amazon_agent",*args,True)
     def test_resource_coverage_and_duplicate_scope(self):

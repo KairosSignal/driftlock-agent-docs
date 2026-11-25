@@ -121,6 +121,21 @@ a Problem, Idea, Research item or existing Plan. It returns source context
 without changing TASK, creating records or claiming semantic certainty.
 The operator must not pass --approve based on inferred user intent.
 
+## Portfolio governance preview: reuse history before construction
+
+In an explicitly authorized new implementation or rework, first query relevant
+prior work with portfolio advise (task intent, cause key or keywords), then
+read only applicable source evidence. Do not fetch an entire portfolio for
+every conversational turn. Reuse the existing task and plan if it already
+covers the work. On a genuine repeated failure, record a concise cause,
+evidence reference, prevention and verification gap; do not infer that every
+Rn is a repetition of the same root cause. Use portfolio record-lesson only
+after explicit authorization to persist, with exact existing task ownership
+and an approved CAS write. The resulting captured lesson is not automatically
+verified. During handoff, use portfolio backlog/dependencies/overview as
+derived advisory views, never as a substitute for the existing exact
+candidate/review/release gates. See references/portfolio-governance-preview.md.
+
 ## Conversation, task and project boundary
 
 New discussion topics, questions, feature ideas or bug reports never silently
