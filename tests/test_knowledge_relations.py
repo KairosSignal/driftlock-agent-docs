@@ -180,3 +180,10 @@ class KnowledgeRelationsTests(unittest.TestCase):
         d=r.sync(self.root)["items"][0]
         self.assertEqual(d["state"],"linked_scope_unresolved")
         self.assertTrue(any(x["code"]=="CYCLIC_REWORK_SCOPE" for x in d["scope_warnings"]))
+
+    def test_plain_markdown_repair_cannot_disappear_from_scope(self):
+        self.task(extra="intake_ids: [IDEA-X]")
+        (self.root/"tasks/AMZ-TASK-00001-R1-repair.md").write_text("# AMZ-TASK-00001-R1\nStatus: deferred, not implemented.\n")
+        d=r.sync(self.root)["items"][0]
+        self.assertEqual(d["state"],"linked_scope_unresolved")
+        self.assertTrue(any(x["code"]=="UNSTRUCTURED_TASK_RECORD" for x in d["scope_warnings"]))

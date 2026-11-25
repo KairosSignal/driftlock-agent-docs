@@ -64,6 +64,11 @@ def inventory(root, project=None):
                     continue
                 ident = m.get(kind+"_id")
                 if not ident:
+                    # A plain Markdown ticket is evidence of unresolved identity,
+                    # not permission to infer its owner, status or completion.
+                    match=re.match(r"^((?:(?:IC|AMZ|INT|BI|KB|GOV)-)?TASK-\d+(?:-[A-Z](?=-|$))?(?:-R\d+)?)(?=-|$)",f.stem) if kind=="task" else None
+                    if match:
+                        warnings.append({"code":"UNSTRUCTURED_TASK_RECORD","id":match.group(1),"path":str(f)})
                     continue
                 if not isinstance(ident,str) or not ID.fullmatch(ident) or (kind=="task" and not TASK_ID.fullmatch(ident)):
                     warnings.append({"code":"INVALID_ID", "path":str(f)})

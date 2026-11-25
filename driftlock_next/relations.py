@@ -140,7 +140,7 @@ def _linked_scope(records,g,ident):
     unresolved=[e for e in g["warnings"] if e.get("code") in ("UNRESOLVED_RELATION","INVALID_RELATION","INVALID_TYPED_RELATION") and e.get("field") in scope_fields and (e.get("from") in plans|tasks or e.get("to")==ident or e.get("field")=="rework_of" and e.get("to") in tasks)]
     families={re.sub(r"-R[1-9][0-9]*$","",i) for i in tasks}
     for w in g["warnings"]:
-        if w.get("code")=="DUPLICATE_RECORD_ID" and isinstance(w.get("id"),str) and (w["id"] in plans|tasks or re.sub(r"-R[1-9][0-9]*$","",w["id"]) in families):
+        if w.get("code") in ("DUPLICATE_RECORD_ID","UNSTRUCTURED_TASK_RECORD") and isinstance(w.get("id"),str) and (w["id"] in plans|tasks or re.sub(r"-R[1-9][0-9]*$","",w["id"]) in families):
             unresolved.append(w)
     # Do not silently ignore a legacy or malformed rework pointer if the
     # identifier itself is a descendant of a linked task.
