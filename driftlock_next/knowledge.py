@@ -120,6 +120,12 @@ def learn(root,project,cause,task,lesson,prevention,source,start,end,source_sha,
     result=change(p["_resolved_root"],rel,expected_sha,out,approve=True,allow_create=True)
     return response("portfolio.learn",project_id=p["id"],lesson_id=meta["lesson_id"],replay=False,observations=len(events)+1,**result)
 
+def _interpretation(meta):
+    return sha(json.dumps([meta.get("root_cause_key"),meta.get("lesson"),meta.get("prevention")],ensure_ascii=False,separators=(",",":")))
+
+def _rule_scope(meta):
+    return sha(json.dumps([sorted(links(meta.get("tags"))),sorted(links(meta.get("task_ids")))],separators=(",",":")))
+
 def promote(root,project,cause,level,evidence,expected_sha,approved,check=None):
     """Explicit one-level promotion, never inferred from recurrence or test counts."""
     if not approved:fail("APPROVAL_REQUIRED","Explicit promotion approval required")
@@ -135,6 +141,8 @@ def promote(root,project,cause,level,evidence,expected_sha,approved,check=None):
     # Explicit human decision references one captured event; not arbitrary prose.
     if not any(e["id"]==evidence for e in events):fail("PROMOTION_EVIDENCE","Reference exact captured evidence event ID")
     ev=next(e for e in events if e["id"]==evidence)
+    if ev.get("lesson")!=m.get("lesson") or ev.get("prevention")!=m.get("prevention"):
+        fail("PROMOTION_INTERPRETATION","Captured interpretation differs from current lesson")
     _,records,_,_=inventory(root,project)
     r=records.get(ev["task_id"])
     if not r or r["project"]!=p["id"]:fail("PROMOTION_EVIDENCE","Task source no longer uniquely owned")
@@ -146,7 +154,7 @@ def promote(root,project,cause,level,evidence,expected_sha,approved,check=None):
     if not isinstance(decisions,list):fail("LESSON_FORMAT","Malformed promotions")
     m["level"]=level
     m["status"]="operator_verified" if level=="L2" else "approved_rule"
-    m["promotions"]=json.dumps(decisions+[{"from":old,"to":level,"evidence_event":evidence,"check":check}],separators=(",",":"))
+    m["promotions"]=json.dumps(decisions+[{"from":old,"to":level,"evidence_event":evidence,"check":check,"interpretation_sha":_interpretation(m),"scope_sha":_rule_scope(m) if level in ("L3","L4") else None}],separators=(",",":"))
     if check:m["check_id"]=check
     result=change(p["_resolved_root"],str(path.relative_to(p["_resolved_root"])),expected_sha,_render(m,body),approve=True)
     return response("portfolio.promote",project_id=p["id"],lesson_id=m["lesson_id"],level=level,**result)
@@ -238,11 +246,17 @@ def preflight(root,project,task=None,query=None):
         except ValueError:continue
         exact=task in item["task_ids"] or any(re.sub(r"-R[1-9][0-9]*$","",i)==base for i in item["task_ids"])
         match_tags=[tag for tag in tags+[cause] if tag.casefold() in text]
+        # Only structured metadata may scope a mandatory rule; prose is advisory.
+        declared=set()
+        for field in ("tags","root_cause_key","module"):
+            try:declared.update(x.casefold() for x in links(m.get(field)))
+            except ValueError:pass
+        exact_tags=[tag for tag in tags+[cause] if tag.casefold() in declared]
         content=" ".join(str(lm.get(k) or "") for k in ("lesson","prevention","root_cause_key")).casefold()
         words=terms(content)
         overlap=tokens&words
         semantic=bool(overlap and (len(overlap)>=2 or query and query.casefold() in content))
-        if not (exact or match_tags or semantic):continue
+        if not (exact or match_tags or exact_tags or semantic):continue
         if lm.get("status")=="retired":continue
         level=lm.get("level") or "L1"
         if level not in LEVELS:level="L1"
@@ -256,25 +270,26 @@ def preflight(root,project,task=None,query=None):
                 es={x["id"]:x for x in _events(lm)}
                 required=LEVELS.index(level)
                 valid=isinstance(ds,list) and len(ds)==required and all(
-                    d.get("from")==LEVELS[i] and d.get("to")==LEVELS[i+1] and d.get("evidence_event") in es
+                    d.get("from")==LEVELS[i] and d.get("to")==LEVELS[i+1] and d.get("evidence_event") in es and d.get("interpretation_sha")==_interpretation(lm)
                     for i,d in enumerate(ds))
                 if valid:
                     for d in ds:
                         ev=es[d["evidence_event"]]; er=records.get(ev["task_id"])
-                        if not er or er["project"]!=p["id"]:valid=False;break
+                        if not er or er["project"]!=p["id"] or ev.get("lesson")!=lm.get("lesson") or ev.get("prevention")!=lm.get("prevention"):valid=False;break
                         _source(p,er,ev["source"],ev["start"],ev["end"],ev["sha256"])
+                if valid and level in ("L3","L4") and ds[-1].get("scope_sha")!=_rule_scope(lm):valid=False
                 if check and (check not in CHECKS or ds[-1].get("check")!=check):valid=False
             except Exception:valid=False
         applicable.append({"lesson_id":item["lesson_id"],"cause":cause,"lesson":item["lesson"],"prevention":item["prevention"],
                            "level":level,"effective_level":level if valid or level=="L1" else "L1",
                            "stale_promotion":level!="L1" and not valid,"source":item["path"],"exact_task_family":exact,
-                           "tags":match_tags,"score":100*int(exact)+20*len(match_tags)+len(overlap),"check":check if valid else None})
+                           "tags":match_tags,"explicit_tags":exact_tags,"score":100*int(exact)+20*len(match_tags)+len(overlap),"check":check if valid else None})
     applicable.sort(key=lambda x:(-LEVELS.index(x["effective_level"]),-x["score"],x["lesson_id"]))
     checks=[]
     for a in applicable:
         check=a["check"]
         # Fuzzy matching alone cannot enforce a rule. Must be explicit task family or exact tag.
-        if not check or not (a["exact_task_family"] or a["tags"]):continue
+        if not check or not (a["exact_task_family"] or a["explicit_tags"]):continue
         if check=="lifecycle_consistency":
             blockers=task_lifecycle_blockers(m)
         elif check=="declared_dependency_consistency":
@@ -285,7 +300,7 @@ def preflight(root,project,task=None,query=None):
             blockers=[] if m.get("allowed_paths") or m.get("scope") else ["declared_scope_missing"]
         else:continue
         checks.append({"lesson_id":a["lesson_id"],"check":check,"violations":blockers})
-    rules=[{"lesson_id":a["lesson_id"],"prevention":a["prevention"]} for a in applicable if a["effective_level"] in ("L3","L4") and (a["exact_task_family"] or a["tags"])]
+    rules=[{"lesson_id":a["lesson_id"],"prevention":a["prevention"]} for a in applicable if a["effective_level"] in ("L3","L4") and (a["exact_task_family"] or a["explicit_tags"])]
     return response("portfolio.preflight",project_id=p["id"],task_id=task,
                     state="blocked" if any(c["violations"] for c in checks) else "advisory",
                     lessons=applicable[:8],applicable_count=len(applicable),checks=checks,required_rules=rules,

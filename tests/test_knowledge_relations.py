@@ -122,3 +122,44 @@ class KnowledgeRelationsTests(unittest.TestCase):
         self.task("AMZ-TASK-00001-R2")
         d=r.sync(self.root)["items"][0]
         self.assertEqual(d["state"],"linked_scope_unresolved")
+
+    def test_malformed_linked_plan_prevents_completion(self):
+        self.task(extra="intake_ids: [IDEA-X]")
+        (self.root/"planning/p.md").write_text("---\nplan_id: AMZ-PLAN-X\nproject_id: amazon_agent\nstatus: implemented\nintake_ids: [IDEA-X]\nrelated_tasks: [broken\n---\n# plan\n")
+        d=r.sync(self.root)["items"][0]
+        self.assertEqual(d["state"],"linked_scope_unresolved")
+        self.assertIn("INVALID_RELATION",[x["code"] for x in d["scope_warnings"]])
+    def test_promotion_interpretation_and_exact_tag_scope(self):
+        first=self.learn(tags="api");path=Path(first["path"])
+        event=k._events(k._header(path.read_text()))[0]["id"]
+        last=first
+        for level in ("L2","L3","L4"):
+            last=k.promote(self.root,"amazon_agent","query-timeout",level,event,last["sha256"],True,"explicit_task_scope" if level=="L4" else None)
+        self.task("AMZ-TASK-00002",extra="tags: [capital]")
+        d=k.preflight(self.root,"amazon_agent","AMZ-TASK-00002","capital")
+        self.assertEqual(d["state"],"advisory");self.assertEqual(d["checks"],[])
+        self.task("AMZ-TASK-00002",extra="tags: [api]")
+        d=k.preflight(self.root,"amazon_agent","AMZ-TASK-00002")
+        self.assertEqual(d["state"],"blocked")
+        original=path.read_text()
+        path.write_text(original.replace("prevention: Bound query duration","prevention: Unapproved replacement"))
+        d=k.preflight(self.root,"amazon_agent","AMZ-TASK-00002")
+        self.assertEqual(d["state"],"advisory")
+        self.assertTrue(d["lessons"][0]["stale_promotion"])
+        path.write_text(original.replace('tags: ["api"]','tags: ["api", "capital"]'))
+        self.task("AMZ-TASK-00002",extra="tags: [capital]")
+        d=k.preflight(self.root,"amazon_agent","AMZ-TASK-00002")
+        self.assertEqual(d["state"],"advisory")
+    def test_failed_predecessor_closed_by_exact_accepted_repair(self):
+        candidate="a"*40
+        self.task(status="rework_required",review="fail",extra="intake_ids: [IDEA-X]")
+        self.task("AMZ-TASK-00001-R1",status="closed",review="pass",extra=f"rework_of: AMZ-TASK-00001\ntask_contract_version: 2\ncandidate_commit: {candidate}\ncandidate_state: frozen")
+        f=self.root/"reports/attest.md"
+        f.write_text(f"---\ntask_id: AMZ-TASK-00001-R1\nverdict: PASS\nreview_status: accepted\ncandidate_commit: {candidate}\n---\n# Independent review\n")
+        def git(*args):subprocess.run(["git","-C",str(self.root),*args],check=True,capture_output=True)
+        git("init","-q");git("config","user.name","Test");git("config","user.email","test@example.invalid");git("add",".");git("commit","-qm","fixture")
+        self.assertEqual(r.sync(self.root)["items"][0]["state"],"closure_review_required")
+        r.accept_scope(self.root,"governance","IDEA-X",json.dumps({"AMZ-TASK-00001-R1":"reports/attest.md"}),sha(self.inbox.read_text()),True)
+        self.assertEqual(r.sync(self.root)["items"][0]["state"],"completed")
+        self.task("AMZ-TASK-00001-R2",extra="rework_of: AMZ-TASK-00001-R1")
+        self.assertEqual(r.sync(self.root)["items"][0]["state"],"completion_evidence_stale")

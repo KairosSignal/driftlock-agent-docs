@@ -24,6 +24,12 @@ def graph(root,project=None):
         if a not in nodes or b not in nodes:
             warnings.append({"code":"UNRESOLVED_RELATION","from":a,"to":b,"field":relation})
             return
+        left,right=nodes[a],nodes[b]
+        if relation=="rework_of":
+            match=re.fullmatch(r"(.+)-R([1-9][0-9]*)",a)
+            expected=(match[1] if int(match[2])==1 else match[1]+"-R"+str(int(match[2])-1)) if match else None
+            if left["kind"]!="task" or right["kind"]!="task" or not left.get("project") or left["project"]!=right.get("project") or b!=expected:
+                warnings.append({"code":"INVALID_TYPED_RELATION","from":a,"to":b,"field":relation});return
         if a==b:return
         key=(a,b,relation)
         if key in keys:return
@@ -31,7 +37,7 @@ def graph(root,project=None):
     def values(m,key):
         try:return links(m.get(key))
         except ValueError:
-            warnings.append({"code":"INVALID_RELATION","field":key})
+            warnings.append({"code":"INVALID_RELATION","field":key,"from":m.get("task_id") or m.get("plan_id")})
             return []
     for i,r in records.items():
         m=r["meta"]
@@ -123,7 +129,12 @@ def _linked_scope(records,g,ident):
             if e["relation"]=="rework_of" and e["to"] in tasks and e["from"] in records and records[e["from"]]["kind"]=="task":
                 tasks.add(e["from"])
         expanded=len(tasks)!=before
-    unresolved=[e for e in g["warnings"] if e.get("code")=="UNRESOLVED_RELATION" and (e.get("from") in plans|tasks or e.get("to")==ident)]
+    scope_fields={"implements_intake","implements_plan","related_task","rework_of","intake_ids","related_tasks","plan","plan_id_ref"}
+    unresolved=[e for e in g["warnings"] if e.get("code") in ("UNRESOLVED_RELATION","INVALID_RELATION","INVALID_TYPED_RELATION") and e.get("field") in scope_fields and (e.get("from") in plans|tasks or e.get("to")==ident or e.get("field")=="rework_of" and e.get("to") in tasks)]
+    families={re.sub(r"-R[1-9][0-9]*$","",i) for i in tasks}
+    for w in g["warnings"]:
+        if w.get("code")=="DUPLICATE_RECORD_ID" and isinstance(w.get("id"),str) and (w["id"] in plans|tasks or re.sub(r"-R[1-9][0-9]*$","",w["id"]) in families):
+            unresolved.append(w)
     # Do not silently ignore a legacy or malformed rework pointer if the
     # identifier itself is a descendant of a linked task.
     for r in records.values():
@@ -146,19 +157,38 @@ def _receipt(item):
         return r if isinstance(r,dict) else None
     return None
 
+def _scope_partition(records,tasks):
+    children=defaultdict(list)
+    for i in tasks:
+        prior=records[i]["meta"].get("rework_of")
+        if isinstance(prior,str) and prior in tasks and records[i]["project"] and records[i]["project"]==records[prior]["project"]:
+            m=re.fullmatch(r"(.+)-R([1-9][0-9]*)",i)
+            if m and prior==(m[1] if int(m[2])==1 else m[1]+"-R"+str(int(m[2])-1)):
+                children[prior].append(i)
+    historical=[]
+    for i in tasks:
+        if records[i]["status"]!="rework_required" or records[i]["review"]!="fail":continue
+        cur=i;seen=set()
+        while len(children.get(cur,[]))==1 and cur not in seen:
+            seen.add(cur);cur=children[cur][0]
+        if cur!=i and verified_terminal(records[cur]):historical.append(i)
+    return sorted(set(tasks)-set(historical)),sorted(historical)
+
 def _validate_scope(root,item,records,tasks,plans,unresolved,receipt):
     if not receipt or not tasks or unresolved or receipt.get("tasks")!=tasks or receipt.get("plans")!=plans:
         return False
     if any(records[i]["status"]!="implemented" for i in plans):return False
     if receipt.get("capture_sha")!=sha(item["text"]):return False
     if receipt.get("record_hashes")!={i:sha(text_file(records[i]["path"])) for i in tasks+plans}:return False
+    required,history=_scope_partition(records,tasks)
+    if receipt.get("historical_failed_attempts")!=history:return False
     evidence=receipt.get("evidence")
-    if not isinstance(evidence,dict) or set(evidence)!=set(tasks):return False
+    if not isinstance(evidence,dict) or set(evidence)!=set(required):return False
     from .problems import _verify_resolution_claim
     from .common import git
     for i in tasks+plans:
         r=records[i]
-        if r["kind"]=="task" and not verified_terminal(r):return False
+        if r["kind"]=="task" and i not in history and not verified_terminal(r):return False
         if not r["project"]:return False
         try:
             p=select(root,r["project"])
@@ -167,7 +197,7 @@ def _validate_scope(root,item,records,tasks,plans,unresolved,receipt):
             committed=git(base,"show","HEAD:"+rel,check=False)
             if committed.returncode or committed.stdout!=text_file(r["path"]):return False
         except Exception:return False
-        if r["kind"]=="plan":continue
+        if r["kind"]=="plan" or i in history:continue
         spec=evidence[i]
         if not isinstance(spec,dict) or spec.get("candidate")!=r["meta"].get("candidate_commit"):return False
         try:
@@ -186,13 +216,14 @@ def accept_scope(root,project,ident,evidence_json,expected_sha,approved):
     if sha(body)!=expected_sha:fail("VERSION_CONFLICT","Intake changed")
     try: ev=json.loads(evidence_json)
     except ValueError:fail("SCOPE_EVIDENCE","Expected object of task ID to review path")
-    if not isinstance(ev,dict) or set(ev)!=set(tasks):fail("SCOPE_EVIDENCE","Supply every bound task, no extra")
+    required,history=_scope_partition(records,tasks)
+    if not isinstance(ev,dict) or set(ev)!=set(required):fail("SCOPE_EVIDENCE","Supply every required task, no extra")
     evidence={}
     for task,rel in ev.items():
         r=records[task];owner=select(root,r["project"])
         f=within(owner["_resolved_root"],rel)
         evidence[task]={"path":rel,"sha256":sha(text_file(f)),"candidate":r["meta"].get("candidate_commit")}
-    receipt={"capture_sha":sha(item["text"]),"tasks":tasks,"plans":plans,"evidence":evidence,"record_hashes":{i:sha(text_file(records[i]["path"])) for i in tasks+plans}}
+    receipt={"capture_sha":sha(item["text"]),"tasks":tasks,"plans":plans,"historical_failed_attempts":history,"evidence":evidence,"record_hashes":{i:sha(text_file(records[i]["path"])) for i in tasks+plans}}
     if not _validate_scope(root,item,records,tasks,plans,unresolved,receipt):
         fail("SCOPE_NOT_VERIFIED","Require full scope, all closed PASS tasks, implemented plans and exact committed attestations")
     m=next(m for m in INTAKE.finditer(body) if m[1]==ident)
@@ -239,7 +270,7 @@ def sync(root,project=None):
         elif ts:
             states=[records[i]["status"] for i in ts]
             if un: row["state"]="linked_scope_unresolved"
-            elif all(verified_terminal(records[i]) for i in ts) and all(records[i]["status"]=="implemented" for i in pl):
+            elif all(verified_terminal(records[i]) for i in _scope_partition(records,ts)[0]) and all(records[i]["status"]=="implemented" for i in pl):
                 row["state"]="closure_review_required"
             elif any(records[i]["status"] in ("deployed","deployed_pending_close","deployed_production_verified") and records[i]["review"]!="pass" for i in ts):
                 row["state"]="deployed_review_pending"
