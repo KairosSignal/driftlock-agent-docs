@@ -17,7 +17,7 @@ def _manifest(root):
         if directory.is_dir():
             for f in sorted(directory.rglob(glob)):
                 if f.is_file():
-                    collected.append(str(f.relative_to(root)))
+                    collected.append(f.relative_to(root).as_posix())
     return sorted(set(collected))
 
 def status(source, installed):

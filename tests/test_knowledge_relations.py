@@ -27,7 +27,7 @@ class KnowledgeRelationsTests(unittest.TestCase):
     def learn(self,task="AMZ-TASK-00001",expected=None,**kw):
         p=self.root/"tasks"/(task+".md")
         args=dict(cause="query-timeout",task=task,lesson="Unbounded queries wait",prevention="Bound query duration",
-                  source=str(p.relative_to(self.root)),start=len(p.read_text().splitlines())-3,end=len(p.read_text().splitlines())-2,
+                  source=p.relative_to(self.root).as_posix(),start=len(p.read_text().splitlines())-3,end=len(p.read_text().splitlines())-2,
                   source_sha=sha(p.read_text()),expected_sha=expected or sha(""),approved=True,tags="performance")
         args.update(kw)
         return k.learn(self.root,"amazon_agent",**args)

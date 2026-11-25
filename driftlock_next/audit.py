@@ -211,7 +211,7 @@ def task_check(root, project_id=None, task_id=None):
     broken_rework = [{"task": ident, "missing_predecessor": parent}
                      for ident, parent in rework_refs if parent not in by_id]
     filtered = [
-        {"task_id": ident, "path": str(file.relative_to(Path(p["_resolved_root"]))),
+        {"task_id": ident, "path": file.relative_to(Path(p["_resolved_root"])).as_posix(),
          "status": meta.get("status", "unknown"), "review_status": meta.get("review_status", "unknown"),
          "project_id": meta.get("current_project", p["id"]), "parent": meta.get("parent"),
          "rework_of": meta.get("rework_of"), "candidate_commit": meta.get("candidate_commit")}
@@ -390,7 +390,7 @@ def plan_list(root, project_id=None, plan=None):
             continue
         if not visible(frontmatter(text_file(f)),p,"plan",p.get("_registry_project_count")):
             continue
-        relative = str(f.relative_to(pr))
+        relative = f.relative_to(pr).as_posix()
         if plan and plan not in (relative, f.name):
             continue
         content = text_file(f)
@@ -419,9 +419,9 @@ def plan_list(root, project_id=None, plan=None):
         if target_id:
             for f,meta in all_plans:
                 if target_id in unpack(meta.get("depends_on")):
-                    consumers.append(meta.get("plan_id") or str(f.relative_to(pr)))
+                    consumers.append(meta.get("plan_id") or f.relative_to(pr).as_posix())
                 if target_id in unpack(meta.get("supersedes")):
-                    replacements.append(meta.get("plan_id") or str(f.relative_to(pr)))
+                    replacements.append(meta.get("plan_id") or f.relative_to(pr).as_posix())
         result["trace"]={"plan_id":target_id,"depends_on":depends_on,"supersedes":supersedes,
             "consumers":consumers,"superseded_by":replacements}
     return result

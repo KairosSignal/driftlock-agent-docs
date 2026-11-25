@@ -75,7 +75,7 @@ def _source(p,record,relative,start,end,expected):
         fail("LESSON_LINES","Select 1–41 existing source lines")
     excerpt="\n".join(lines[start-1:end])
     if not excerpt.strip() or len(excerpt)>6000:fail("LESSON_LINES","Empty or excessive evidence excerpt")
-    return {"source":str(rel),"sha256":digest,"start":start,"end":end,"excerpt":excerpt}
+    return {"source":rel.as_posix(),"sha256":digest,"start":start,"end":end,"excerpt":excerpt}
 
 def learn(root,project,cause,task,lesson,prevention,source,start,end,source_sha,expected_sha,approved,tags=None):
     """Add one exact-source observation to a canonical cause, dedup by source/range/task."""
@@ -103,7 +103,7 @@ def learn(root,project,cause,task,lesson,prevention,source,start,end,source_sha,
         if any(e["id"]==ev["id"] for e in events):
             return response("portfolio.learn",project_id=p["id"],lesson_id=old["lesson_id"],replay=True,sha256=actual,changed=False)
         # Old level remains, but new observations do not inherit verification.
-        meta=dict(old);rel=str(path.relative_to(p["_resolved_root"]))
+        meta=dict(old);rel=path.relative_to(p["_resolved_root"]).as_posix()
     else:
         if expected_sha!=sha(""):fail("VERSION_CONFLICT","New lesson expected empty SHA")
         ident=_canonical_id(p["id"],cause)
@@ -156,7 +156,7 @@ def promote(root,project,cause,level,evidence,expected_sha,approved,check=None):
     m["status"]="operator_verified" if level=="L2" else "approved_rule"
     m["promotions"]=json.dumps(decisions+[{"from":old,"to":level,"evidence_event":evidence,"check":check,"interpretation_sha":_interpretation(m),"scope_sha":_rule_scope(m) if level in ("L3","L4") else None}],separators=(",",":"))
     if check:m["check_id"]=check
-    result=change(p["_resolved_root"],str(path.relative_to(p["_resolved_root"])),expected_sha,_render(m,body),approve=True)
+    result=change(p["_resolved_root"],path.relative_to(p["_resolved_root"]).as_posix(),expected_sha,_render(m,body),approve=True)
     return response("portfolio.promote",project_id=p["id"],lesson_id=m["lesson_id"],level=level,**result)
 
 def harvest(root,project=None,limit=50,task=None):
@@ -174,7 +174,7 @@ def harvest(root,project=None,limit=50,task=None):
     def extract(r,path):
         p=known.get(r["project"])
         if not p:return
-        rel=str(path.relative_to(p["_resolved_root"]))
+        rel=path.relative_to(p["_resolved_root"]).as_posix()
         text=text_file(path);digest=sha(text);lines=text.splitlines()
         sections=[]
         for i,line in enumerate(lines):

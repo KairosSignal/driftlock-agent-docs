@@ -56,7 +56,7 @@ def inventory(root, project=None):
                     continue
                 visited.add(f)
                 try:
-                    within(base, str(f.relative_to(base)))
+                    within(base, f.relative_to(base).as_posix())
                     body = text_file(f)
                     m = frontmatter(body)
                 except Exception as exc:
@@ -268,7 +268,7 @@ def lessons(root, project=None, query=None):
             visited.add(path)
             if path.is_symlink() or not path.is_file():continue
             try:
-                within(base,str(path.relative_to(base)))
+                within(base,path.relative_to(base).as_posix())
                 m=frontmatter(text_file(path))
                 if not ID.fullmatch(str(m.get("lesson_id",""))) or not ID.fullmatch(str(m.get("root_cause_key",""))):
                     raise ValueError("invalid lesson identity")

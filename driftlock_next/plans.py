@@ -58,7 +58,7 @@ def validate(root, project=None, proposed=None):
     for f,meta in entries:
         ident = meta.get("plan_id")
         if not ident:
-            legacy.append(str(f.relative_to(p["_resolved_root"])))
+            legacy.append(f.relative_to(p["_resolved_root"]).as_posix())
             continue
         if not isinstance(ident,str) or not IDENT.fullmatch(ident):
             problems.append({"code":"INVALID_PLAN_ID","file":str(f),"id":ident})
@@ -154,7 +154,7 @@ def _transition_locked(root, project, plan_id, status, expected_sha, evidence, a
         fail("PLAN_GRAPH_UNHEALTHY", f"Current Plan graph needs reconciliation: {baseline['issues']}")
     if preview["issues"]:
         fail("PLAN_GRAPH_INVALID_AFTER_TRANSITION", f"Proposed update violates Plan graph: {preview['issues']}")
-    relative=str(path.relative_to(p["_resolved_root"]))
+    relative=path.relative_to(p["_resolved_root"]).as_posix()
     result=change(p["_resolved_root"],relative,expected_sha,replacement,approve=approve)
     return response("plan.transition",project_id=p["id"],plan_id=plan_id,
         previous=prior,status=status,**result,task_created=False,execution_context_changed=False)

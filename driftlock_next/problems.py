@@ -119,7 +119,7 @@ def _verify_resolution_claim(root, linked_task_id, evidence, task_meta):
     path = within(root, evidence, allow_missing=False)
     if not path.is_file() or path.suffix.lower() not in (".md", ".json"):
         fail("RESOLUTION_EVIDENCE_FORMAT", "Evidence must be a trusted review report")
-    rel = str(path.relative_to(Path(root)))
+    rel = path.relative_to(Path(root)).as_posix()
     # A loose positive word or an untracked, edited report must never close a defect.
     result = git(root, "ls-files", "--error-unmatch", "--", rel, check=False)
     if result.returncode:

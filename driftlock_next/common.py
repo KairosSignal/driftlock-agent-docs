@@ -70,7 +70,7 @@ def git(repo, *args, check=True):
         result = subprocess.run(
             ["git", "--no-optional-locks", "-c", "core.fsmonitor=false",
              "-c", "core.hooksPath="+os.devnull, "-C", str(repo), *args], capture_output=True,
-            text=True, timeout=12, check=False,
+            text=True, encoding="utf-8", errors="strict", timeout=12, check=False,
             env=git_safe_env(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:

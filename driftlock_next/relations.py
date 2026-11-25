@@ -147,7 +147,7 @@ def _linked_scope(records,g,ident):
         relevant=w["id"] in plans|tasks or re.sub(r"-R[1-9][0-9]*$","",w["id"]) in families
         for ref in w.get("scope_refs",[]):
             field,target=ref["field"],ref["target"]
-            if field=="intake_ids" and target==ident or field in ("rework_of","related_tasks") and target in tasks or field in ("plan","plan_id_ref") and (target in plans or any(records[i]["path"].endswith("/"+target) for i in plans)):
+            if field=="intake_ids" and target==ident or field in ("rework_of","related_tasks") and target in tasks or field in ("plan","plan_id_ref") and (target in plans or any(Path(records[i]["path"]).as_posix().endswith("/"+target) for i in plans)):
                 relevant=True
         if relevant:unresolved.append(w)
     # Do not silently ignore a legacy or malformed rework pointer if the
@@ -219,7 +219,7 @@ def _validate_scope(root,item,records,tasks,plans,unresolved,receipt):
         try:
             p=select(root,r["project"])
             base=Path(p["_resolved_root"])
-            rel=str(Path(r["path"]).relative_to(base))
+            rel=Path(r["path"]).relative_to(base).as_posix()
             committed=git(base,"show","HEAD:"+rel,check=False)
             if committed.returncode or committed.stdout!=text_file(r["path"]):return False
         except Exception:return False
@@ -265,7 +265,7 @@ def accept_scope(root,project,ident,evidence_json,expected_sha,approved):
         receipt["supersedes_sha"]=sha(prior[-1])
     # Append a new receipt in the original header, preserving prior evidence.
     out=body[:head_end]+"\nCompletion-Receipt: "+json.dumps(receipt,ensure_ascii=False,separators=(",",":"))+"\n"+body[head_end:]
-    result=change(p["_resolved_root"],str(path.relative_to(p["_resolved_root"])),expected_sha,out,approve=True)
+    result=change(p["_resolved_root"],path.relative_to(p["_resolved_root"]).as_posix(),expected_sha,out,approve=True)
     return response("portfolio.accept-scope",project_id=p["id"],id=ident,**result)
 
 def sync(root,project=None):
