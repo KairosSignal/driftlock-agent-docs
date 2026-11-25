@@ -127,12 +127,24 @@ In an explicitly authorized new implementation or rework, first query relevant
 prior work with portfolio advise (task intent, cause key or keywords), then
 read only applicable source evidence. Do not fetch an entire portfolio for
 every conversational turn. Reuse the existing task and plan if it already
-covers the work. On a genuine repeated failure, record a concise cause,
-evidence reference, prevention and verification gap; do not infer that every
-Rn is a repetition of the same root cause. Use portfolio record-lesson only
-after explicit authorization to persist, with exact existing task ownership
-and an approved CAS write. The resulting captured lesson is not automatically
-verified. Use portfolio learn for canonical cause-linked observations; harvest returns exact-source candidates, not established facts. Use portfolio graph/sync for automatic typed links and derived progress, and portfolio preflight for bounded relevant lessons. The candidate context check integrates preflight and targeted harvest. Promotion to L2/L3/L4 needs explicit evidence and approval. During handoff, use portfolio backlog/dependencies/overview as
+covers the work.
+
+Capture engineering lessons during implementation, not only at closure.
+When a material obstacle is diagnosed, a failed attempt exposes a reusable
+cause, an effective workaround is demonstrated, or review/CI reveals a defect,
+record the evidence in the existing task or task-bound report at the next
+natural checkpoint. Include symptom, confirmed cause (or explicitly unknown
+cause), failed approaches worth avoiding, effective correction, and applicable
+prevention. Do not log routine commands, every transient retry, or speculative
+causes as established lessons. Continue in-scope remediation without interrupting
+the user for each finding. At handoff or closure reconcile outstanding candidates,
+merge evidence by cause, and do not repeat already captured observations.
+Use portfolio learn for reusable, evidenced L1 observations when persistence
+is explicitly authorized, with exact task ownership and CAS; use harvest for
+unverified candidates. A standing authorization for routine in-scope lesson
+capture is not permission to promote rules or expand implementation or release
+scope. Do not infer that every Rn is a repetition of the same root cause.
+Legacy portfolio record-lesson is retained for compatibility. Use portfolio learn for canonical cause-linked observations; harvest returns exact-source candidates, not established facts. Use portfolio graph/sync for automatic typed links and derived progress, and portfolio preflight for bounded relevant lessons. The candidate context check integrates preflight and targeted harvest. Promotion to L2/L3/L4 needs explicit evidence and approval. During handoff, use portfolio backlog/dependencies/overview as
 derived advisory views, never as a substitute for the existing exact
 candidate/review/release gates. See references/portfolio-governance-preview.md.
 
